@@ -2,6 +2,7 @@ from datetime import date, timedelta
 from typing import List
 from uuid import UUID
 
+from dateutil.relativedelta import relativedelta
 from fastapi import FastAPI, Depends, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
@@ -84,7 +85,7 @@ def crear_tramite(tramite: schemas.TramiteCreate, db: Session = Depends(get_db))
     # Autocompleta fecha de vencimiento y checklist según el catálogo
     data = tramite.model_dump()
     if tipo.vigencia_meses and not data.get("fecha_vencimiento"):
-        data["fecha_vencimiento"] = data["fecha_inicio"] + timedelta(days=tipo.vigencia_meses * 30)
+        data["fecha_vencimiento"] = data["fecha_inicio"] + relativedelta(months=tipo.vigencia_meses)
 
     nuevo = models.Tramite(**data)
     nuevo.checklist = [{"item": doc, "completado": False} for doc in (tipo.checklist_default or [])]
