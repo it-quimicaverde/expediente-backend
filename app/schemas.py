@@ -76,3 +76,25 @@ class UsuarioOut(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+class TramiteDashboardOut(BaseModel):
+    id: UUID
+    empresa_id: UUID
+    empresa_nombre: str
+    tramite_nombre: str
+    categoria: str
+    numero_expediente: Optional[str] = None
+    fecha_vencimiento: Optional[date] = None
+    estado: str
+
+
+class TramiteEmpresaOut(BaseModel):
+    id: UUID
+    tramite_nombre: str
+    categoria: str
+    numero_expediente: Optional[str] = None
+    fecha_inicio: date
+    fecha_vencimiento: Optional[date] = None
+    estado: str
+    checklist: List[dict] = []

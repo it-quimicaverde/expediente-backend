@@ -6,7 +6,7 @@ from dateutil.relativedelta import relativedelta
 from fastapi import FastAPI, Depends, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import OAuth2PasswordRequestForm
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import asc
 
 from . import models, schemas, auth
@@ -17,11 +17,11 @@ Base.metadata.create_all(bind=engine)
 
 app = FastAPI(title="Expediente API")
 
-# Ajusta esto al dominio real de tu frontend en Vercel
+# CORS abierto: la seguridad real la da el token JWT en cada petición, no el origen.
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "https://tu-frontend.vercel.app"],
-    allow_credentials=True,
+    allow_origins=["*"],
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -77,6 +77,18 @@ def crear_empresa(
     return nueva
 
 
+@app.get("/empresas/{empresa_id}", response_model=schemas.EmpresaClienteOut)
+def obtener_empresa(
+    empresa_id: UUID,
+    db: Session = Depends(get_db),
+    current_user: models.Usuario = Depends(auth.get_current_user),
+):
+    empresa = db.query(models.EmpresaCliente).filter(models.EmpresaCliente.id == empresa_id).first()
+    if not empresa:
+        raise HTTPException(status_code=404, detail="Empresa no encontrada")
+    return empresa
+
+
 # ---------- Tipos de trámite (catálogo) ----------
 @app.get("/tipos-tramite", response_model=List[schemas.TipoTramiteOut])
 def listar_tipos_tramite(
@@ -91,20 +103,37 @@ def listar_tipos_tramite(
 
 
 # ---------- Trámites ----------
-@app.get("/dashboard/proximos-vencer", response_model=List[schemas.TramiteOut])
+@app.get("/dashboard/proximos-vencer", response_model=List[schemas.TramiteDashboardOut])
 def proximos_a_vencer(
     dias: int = 30,
     db: Session = Depends(get_db),
     current_user: models.Usuario = Depends(auth.get_current_user),
 ):
     limite = date.today() + timedelta(days=dias)
-    return (
+    tramites = (
         db.query(models.Tramite)
+        .options(
+            joinedload(models.Tramite.empresa_cliente),
+            joinedload(models.Tramite.tipo_tramite),
+        )
         .filter(models.Tramite.fecha_vencimiento.isnot(None))
         .filter(models.Tramite.fecha_vencimiento <= limite)
         .order_by(asc(models.Tramite.fecha_vencimiento))
         .all()
     )
+    return [
+        schemas.TramiteDashboardOut(
+            id=t.id,
+            empresa_id=t.empresa_cliente_id,
+            empresa_nombre=t.empresa_cliente.nombre,
+            tramite_nombre=t.tipo_tramite.nombre,
+            categoria=t.tipo_tramite.categoria,
+            numero_expediente=t.numero_expediente,
+            fecha_vencimiento=t.fecha_vencimiento,
+            estado=t.estado,
+        )
+        for t in tramites
+    ]
 
 
 @app.post("/tramites", response_model=schemas.TramiteOut)
@@ -130,15 +159,29 @@ def crear_tramite(
     return nuevo
 
 
-@app.get("/empresas/{empresa_id}/tramites", response_model=List[schemas.TramiteOut])
+@app.get("/empresas/{empresa_id}/tramites", response_model=List[schemas.TramiteEmpresaOut])
 def tramites_de_empresa(
     empresa_id: UUID,
     db: Session = Depends(get_db),
     current_user: models.Usuario = Depends(auth.get_current_user),
 ):
-    return (
+    tramites = (
         db.query(models.Tramite)
+        .options(joinedload(models.Tramite.tipo_tramite))
         .filter(models.Tramite.empresa_cliente_id == empresa_id)
         .order_by(models.Tramite.fecha_vencimiento)
         .all()
     )
+    return [
+        schemas.TramiteEmpresaOut(
+            id=t.id,
+            tramite_nombre=t.tipo_tramite.nombre,
+            categoria=t.tipo_tramite.categoria,
+            numero_expediente=t.numero_expediente,
+            fecha_inicio=t.fecha_inicio,
+            fecha_vencimiento=t.fecha_vencimiento,
+            estado=t.estado,
+            checklist=t.checklist or [],
+        )
+        for t in tramites
+    ]
