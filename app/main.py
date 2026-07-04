@@ -41,8 +41,12 @@ def listar_empresas(q: str = "", db: Session = Depends(get_db)):
 
 @app.post("/empresas", response_model=schemas.EmpresaClienteOut)
 def crear_empresa(empresa: schemas.EmpresaClienteCreate, db: Session = Depends(get_db)):
-    # organizacion_id vendrá del usuario autenticado; se deja fijo aquí como placeholder
-    nueva = models.EmpresaCliente(**empresa.model_dump())
+    # Temporal: hasta que exista login, se usa la única organización sembrada (Química Verde).
+    org = db.query(models.Organizacion).first()
+    if not org:
+        raise HTTPException(status_code=500, detail="No hay ninguna organización creada todavía")
+
+    nueva = models.EmpresaCliente(organizacion_id=org.id, **empresa.model_dump())
     db.add(nueva)
     db.commit()
     db.refresh(nueva)
