@@ -89,6 +89,25 @@ def obtener_empresa(
     return empresa
 
 
+@app.patch("/empresas/{empresa_id}", response_model=schemas.EmpresaClienteOut)
+def editar_empresa(
+    empresa_id: UUID,
+    cambios: schemas.EmpresaClienteUpdate,
+    db: Session = Depends(get_db),
+    current_user: models.Usuario = Depends(auth.require_admin),
+):
+    empresa = db.query(models.EmpresaCliente).filter(models.EmpresaCliente.id == empresa_id).first()
+    if not empresa:
+        raise HTTPException(status_code=404, detail="Empresa no encontrada")
+
+    for campo, valor in cambios.model_dump(exclude_unset=True).items():
+        setattr(empresa, campo, valor)
+
+    db.commit()
+    db.refresh(empresa)
+    return empresa
+
+
 # ---------- Tipos de trámite (catálogo) ----------
 @app.get("/tipos-tramite", response_model=List[schemas.TipoTramiteOut])
 def listar_tipos_tramite(
@@ -185,3 +204,50 @@ def tramites_de_empresa(
         )
         for t in tramites
     ]
+
+
+@app.patch("/tramites/{tramite_id}", response_model=schemas.TramiteEmpresaOut)
+def editar_tramite(
+    tramite_id: UUID,
+    cambios: schemas.TramiteUpdate,
+    db: Session = Depends(get_db),
+    current_user: models.Usuario = Depends(auth.get_current_user),
+):
+    tramite = (
+        db.query(models.Tramite)
+        .options(joinedload(models.Tramite.tipo_tramite))
+        .filter(models.Tramite.id == tramite_id)
+        .first()
+    )
+    if not tramite:
+        raise HTTPException(status_code=404, detail="Trámite no encontrado")
+
+    for campo, valor in cambios.model_dump(exclude_unset=True).items():
+        setattr(tramite, campo, valor)
+
+    db.commit()
+    db.refresh(tramite)
+    return schemas.TramiteEmpresaOut(
+        id=tramite.id,
+        tramite_nombre=tramite.tipo_tramite.nombre,
+        categoria=tramite.tipo_tramite.categoria,
+        numero_expediente=tramite.numero_expediente,
+        fecha_inicio=tramite.fecha_inicio,
+        fecha_vencimiento=tramite.fecha_vencimiento,
+        estado=tramite.estado,
+        checklist=tramite.checklist or [],
+    )
+
+
+@app.delete("/tramites/{tramite_id}", status_code=204)
+def borrar_tramite(
+    tramite_id: UUID,
+    db: Session = Depends(get_db),
+    current_user: models.Usuario = Depends(auth.require_admin),
+):
+    tramite = db.query(models.Tramite).filter(models.Tramite.id == tramite_id).first()
+    if not tramite:
+        raise HTTPException(status_code=404, detail="Trámite no encontrado")
+    db.delete(tramite)
+    db.commit()
+    return None

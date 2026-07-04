@@ -25,6 +25,15 @@ class EmpresaClienteOut(EmpresaClienteBase):
         from_attributes = True
 
 
+class EmpresaClienteUpdate(BaseModel):
+    nombre: Optional[str] = None
+    nit: Optional[str] = None
+    contacto_nombre: Optional[str] = None
+    contacto_email: Optional[EmailStr] = None
+    contacto_telefono: Optional[str] = None
+    notas: Optional[str] = None
+
+
 class TramiteBase(BaseModel):
     empresa_cliente_id: UUID
     tipo_tramite_id: UUID
@@ -87,6 +96,15 @@ class TramiteDashboardOut(BaseModel):
     numero_expediente: Optional[str] = None
     fecha_vencimiento: Optional[date] = None
     estado: str
+
+
+class TramiteUpdate(BaseModel):
+    numero_expediente: Optional[str] = None
+    fecha_inicio: Optional[date] = None
+    fecha_vencimiento: Optional[date] = None
+    estado: Optional[str] = None
+    notas: Optional[str] = None
+    checklist: Optional[List[dict]] = None
 
 
 class TramiteEmpresaOut(BaseModel):
