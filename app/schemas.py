@@ -61,3 +61,18 @@ class TipoTramiteOut(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+class Token(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
+
+
+class UsuarioOut(BaseModel):
+    id: UUID
+    nombre: str
+    email: EmailStr
+    rol: str
+
+    class Config:
+        from_attributes = True

@@ -5,10 +5,11 @@ from uuid import UUID
 from dateutil.relativedelta import relativedelta
 from fastapi import FastAPI, Depends, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
 from sqlalchemy import asc
 
-from . import models, schemas
+from . import models, schemas, auth
 from .database import engine, get_db, Base
 
 # Crea las tablas si no existen (para desarrollo; en producción usar Alembic)
@@ -31,9 +32,28 @@ def health():
     return {"status": "ok"}
 
 
+# ---------- Autenticación ----------
+@app.post("/auth/login", response_model=schemas.Token)
+def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
+    user = auth.authenticate_user(db, form_data.username, form_data.password)
+    if not user:
+        raise HTTPException(status_code=401, detail="Correo o contraseña incorrectos")
+    token = auth.create_access_token(data={"sub": str(user.id)})
+    return {"access_token": token, "token_type": "bearer"}
+
+
+@app.get("/auth/me", response_model=schemas.UsuarioOut)
+def me(current_user: models.Usuario = Depends(auth.get_current_user)):
+    return current_user
+
+
 # ---------- Empresas cliente ----------
 @app.get("/empresas", response_model=List[schemas.EmpresaClienteOut])
-def listar_empresas(q: str = "", db: Session = Depends(get_db)):
+def listar_empresas(
+    q: str = "",
+    db: Session = Depends(get_db),
+    current_user: models.Usuario = Depends(auth.get_current_user),
+):
     query = db.query(models.EmpresaCliente)
     if q:
         query = query.filter(models.EmpresaCliente.nombre.ilike(f"%{q}%"))
@@ -41,8 +61,11 @@ def listar_empresas(q: str = "", db: Session = Depends(get_db)):
 
 
 @app.post("/empresas", response_model=schemas.EmpresaClienteOut)
-def crear_empresa(empresa: schemas.EmpresaClienteCreate, db: Session = Depends(get_db)):
-    # Temporal: hasta que exista login, se usa la única organización sembrada (Química Verde).
+def crear_empresa(
+    empresa: schemas.EmpresaClienteCreate,
+    db: Session = Depends(get_db),
+    current_user: models.Usuario = Depends(auth.require_admin),
+):
     org = db.query(models.Organizacion).first()
     if not org:
         raise HTTPException(status_code=500, detail="No hay ninguna organización creada todavía")
@@ -56,16 +79,24 @@ def crear_empresa(empresa: schemas.EmpresaClienteCreate, db: Session = Depends(g
 
 # ---------- Tipos de trámite (catálogo) ----------
 @app.get("/tipos-tramite", response_model=List[schemas.TipoTramiteOut])
-def listar_tipos_tramite(categoria: str = "", db: Session = Depends(get_db)):
+def listar_tipos_tramite(
+    categoria: str = "",
+    db: Session = Depends(get_db),
+    current_user: models.Usuario = Depends(auth.get_current_user),
+):
     query = db.query(models.TipoTramite)
     if categoria:
-        query = query.filter(models.TipoTramite.categoria == categoria)
+        query = query.filter(models.TipoTramite.categoria == categoria.lower())
     return query.all()
 
 
 # ---------- Trámites ----------
 @app.get("/dashboard/proximos-vencer", response_model=List[schemas.TramiteOut])
-def proximos_a_vencer(dias: int = 30, db: Session = Depends(get_db)):
+def proximos_a_vencer(
+    dias: int = 30,
+    db: Session = Depends(get_db),
+    current_user: models.Usuario = Depends(auth.get_current_user),
+):
     limite = date.today() + timedelta(days=dias)
     return (
         db.query(models.Tramite)
@@ -77,7 +108,11 @@ def proximos_a_vencer(dias: int = 30, db: Session = Depends(get_db)):
 
 
 @app.post("/tramites", response_model=schemas.TramiteOut)
-def crear_tramite(tramite: schemas.TramiteCreate, db: Session = Depends(get_db)):
+def crear_tramite(
+    tramite: schemas.TramiteCreate,
+    db: Session = Depends(get_db),
+    current_user: models.Usuario = Depends(auth.get_current_user),
+):
     tipo = db.query(models.TipoTramite).filter(models.TipoTramite.id == tramite.tipo_tramite_id).first()
     if not tipo:
         raise HTTPException(status_code=404, detail="Tipo de trámite no encontrado")
@@ -96,7 +131,11 @@ def crear_tramite(tramite: schemas.TramiteCreate, db: Session = Depends(get_db))
 
 
 @app.get("/empresas/{empresa_id}/tramites", response_model=List[schemas.TramiteOut])
-def tramites_de_empresa(empresa_id: UUID, db: Session = Depends(get_db)):
+def tramites_de_empresa(
+    empresa_id: UUID,
+    db: Session = Depends(get_db),
+    current_user: models.Usuario = Depends(auth.get_current_user),
+):
     return (
         db.query(models.Tramite)
         .filter(models.Tramite.empresa_cliente_id == empresa_id)
