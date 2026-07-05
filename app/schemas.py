@@ -87,6 +87,22 @@ class UsuarioOut(BaseModel):
         from_attributes = True
 
 
+class UsuarioCreate(BaseModel):
+    nombre: str
+    email: EmailStr
+    password: str
+    rol: str = "gestor"
+
+
+class AsignacionEmpresas(BaseModel):
+    usuario_ids: List[UUID]
+
+
+class DashboardResumen(BaseModel):
+    total_empresas: int
+    empresas_sin_tramites: int
+
+
 class TramiteDashboardOut(BaseModel):
     id: UUID
     empresa_id: UUID

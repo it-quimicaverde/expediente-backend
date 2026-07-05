@@ -83,6 +83,12 @@ class Tramite(Base):
     tipo_tramite = relationship("TipoTramite")
 
 
+class UsuarioEmpresaCliente(Base):
+    __tablename__ = "usuario_empresa_cliente"
+    usuario_id = Column(UUID(as_uuid=True), ForeignKey("usuario.id"), primary_key=True)
+    empresa_cliente_id = Column(UUID(as_uuid=True), ForeignKey("empresa_cliente.id"), primary_key=True)
+
+
 class Alerta(Base):
     __tablename__ = "alerta"
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)

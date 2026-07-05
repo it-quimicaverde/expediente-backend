@@ -27,6 +27,24 @@ app.add_middleware(
 )
 
 
+def empresas_asignadas_ids(db: Session, usuario_id) -> list:
+    filas = (
+        db.query(models.UsuarioEmpresaCliente.empresa_cliente_id)
+        .filter(models.UsuarioEmpresaCliente.usuario_id == usuario_id)
+        .all()
+    )
+    return [f[0] for f in filas]
+
+
+def verificar_acceso_empresa(db: Session, current_user: models.Usuario, empresa_id) -> None:
+    """Lanza 403 si un gestor intenta acceder a una empresa que no tiene asignada."""
+    if current_user.rol == "admin":
+        return
+    asignadas = empresas_asignadas_ids(db, current_user.id)
+    if empresa_id not in asignadas:
+        raise HTTPException(status_code=403, detail="No tienes esta empresa asignada")
+
+
 @app.get("/health")
 def health():
     return {"status": "ok"}
@@ -55,6 +73,9 @@ def listar_empresas(
     current_user: models.Usuario = Depends(auth.get_current_user),
 ):
     query = db.query(models.EmpresaCliente)
+    if current_user.rol != "admin":
+        asignadas = empresas_asignadas_ids(db, current_user.id)
+        query = query.filter(models.EmpresaCliente.id.in_(asignadas))
     if q:
         query = query.filter(models.EmpresaCliente.nombre.ilike(f"%{q}%"))
     return query.order_by(models.EmpresaCliente.nombre).limit(100).all()
@@ -83,6 +104,7 @@ def obtener_empresa(
     db: Session = Depends(get_db),
     current_user: models.Usuario = Depends(auth.get_current_user),
 ):
+    verificar_acceso_empresa(db, current_user, empresa_id)
     empresa = db.query(models.EmpresaCliente).filter(models.EmpresaCliente.id == empresa_id).first()
     if not empresa:
         raise HTTPException(status_code=404, detail="Empresa no encontrada")
@@ -108,6 +130,69 @@ def editar_empresa(
     return empresa
 
 
+# ---------- Usuarios (gestión de cuentas, solo admin) ----------
+@app.get("/usuarios", response_model=List[schemas.UsuarioOut])
+def listar_usuarios(
+    db: Session = Depends(get_db),
+    current_user: models.Usuario = Depends(auth.require_admin),
+):
+    return db.query(models.Usuario).order_by(models.Usuario.nombre).all()
+
+
+@app.post("/usuarios", response_model=schemas.UsuarioOut)
+def crear_usuario(
+    datos: schemas.UsuarioCreate,
+    db: Session = Depends(get_db),
+    current_user: models.Usuario = Depends(auth.require_admin),
+):
+    existente = db.query(models.Usuario).filter(models.Usuario.email == datos.email).first()
+    if existente:
+        raise HTTPException(status_code=400, detail="Ya existe un usuario con ese correo")
+
+    org = db.query(models.Organizacion).first()
+    nuevo = models.Usuario(
+        organizacion_id=org.id,
+        nombre=datos.nombre,
+        email=datos.email,
+        password_hash=auth.hash_password(datos.password),
+        rol=datos.rol,
+    )
+    db.add(nuevo)
+    db.commit()
+    db.refresh(nuevo)
+    return nuevo
+
+
+@app.get("/empresas/{empresa_id}/gestores", response_model=List[schemas.UsuarioOut])
+def listar_gestores_de_empresa(
+    empresa_id: UUID,
+    db: Session = Depends(get_db),
+    current_user: models.Usuario = Depends(auth.require_admin),
+):
+    return (
+        db.query(models.Usuario)
+        .join(models.UsuarioEmpresaCliente, models.UsuarioEmpresaCliente.usuario_id == models.Usuario.id)
+        .filter(models.UsuarioEmpresaCliente.empresa_cliente_id == empresa_id)
+        .all()
+    )
+
+
+@app.put("/empresas/{empresa_id}/gestores")
+def asignar_gestores(
+    empresa_id: UUID,
+    datos: schemas.AsignacionEmpresas,
+    db: Session = Depends(get_db),
+    current_user: models.Usuario = Depends(auth.require_admin),
+):
+    db.query(models.UsuarioEmpresaCliente).filter(
+        models.UsuarioEmpresaCliente.empresa_cliente_id == empresa_id
+    ).delete()
+    for usuario_id in datos.usuario_ids:
+        db.add(models.UsuarioEmpresaCliente(usuario_id=usuario_id, empresa_cliente_id=empresa_id))
+    db.commit()
+    return {"status": "ok"}
+
+
 # ---------- Tipos de trámite (catálogo) ----------
 @app.get("/tipos-tramite", response_model=List[schemas.TipoTramiteOut])
 def listar_tipos_tramite(
@@ -122,6 +207,22 @@ def listar_tipos_tramite(
 
 
 # ---------- Trámites ----------
+@app.get("/dashboard/resumen", response_model=schemas.DashboardResumen)
+def resumen_dashboard(
+    db: Session = Depends(get_db),
+    current_user: models.Usuario = Depends(auth.get_current_user),
+):
+    query = db.query(models.EmpresaCliente)
+    if current_user.rol != "admin":
+        asignadas = empresas_asignadas_ids(db, current_user.id)
+        query = query.filter(models.EmpresaCliente.id.in_(asignadas))
+
+    empresas = query.all()
+    total = len(empresas)
+    sin_tramites = sum(1 for e in empresas if len(e.tramites) == 0)
+    return schemas.DashboardResumen(total_empresas=total, empresas_sin_tramites=sin_tramites)
+
+
 @app.get("/dashboard/proximos-vencer", response_model=List[schemas.TramiteDashboardOut])
 def proximos_a_vencer(
     dias: int = 30,
@@ -129,7 +230,7 @@ def proximos_a_vencer(
     current_user: models.Usuario = Depends(auth.get_current_user),
 ):
     limite = date.today() + timedelta(days=dias)
-    tramites = (
+    query = (
         db.query(models.Tramite)
         .options(
             joinedload(models.Tramite.empresa_cliente),
@@ -137,9 +238,12 @@ def proximos_a_vencer(
         )
         .filter(models.Tramite.fecha_vencimiento.isnot(None))
         .filter(models.Tramite.fecha_vencimiento <= limite)
-        .order_by(asc(models.Tramite.fecha_vencimiento))
-        .all()
     )
+    if current_user.rol != "admin":
+        asignadas = empresas_asignadas_ids(db, current_user.id)
+        query = query.filter(models.Tramite.empresa_cliente_id.in_(asignadas))
+
+    tramites = query.order_by(asc(models.Tramite.fecha_vencimiento)).all()
     return [
         schemas.TramiteDashboardOut(
             id=t.id,
@@ -161,6 +265,8 @@ def crear_tramite(
     db: Session = Depends(get_db),
     current_user: models.Usuario = Depends(auth.get_current_user),
 ):
+    verificar_acceso_empresa(db, current_user, tramite.empresa_cliente_id)
+
     tipo = db.query(models.TipoTramite).filter(models.TipoTramite.id == tramite.tipo_tramite_id).first()
     if not tipo:
         raise HTTPException(status_code=404, detail="Tipo de trámite no encontrado")
@@ -184,6 +290,7 @@ def tramites_de_empresa(
     db: Session = Depends(get_db),
     current_user: models.Usuario = Depends(auth.get_current_user),
 ):
+    verificar_acceso_empresa(db, current_user, empresa_id)
     tramites = (
         db.query(models.Tramite)
         .options(joinedload(models.Tramite.tipo_tramite))
