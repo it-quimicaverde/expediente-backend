@@ -11,6 +11,7 @@ from sqlalchemy import asc
 
 from . import models, schemas, auth
 from .database import engine, get_db, Base
+from .alertas_job import ejecutar_revision_alertas
 
 # Crea las tablas si no existen (para desarrollo; en producción usar Alembic)
 Base.metadata.create_all(bind=engine)
@@ -48,6 +49,11 @@ def verificar_acceso_empresa(db: Session, current_user: models.Usuario, empresa_
 @app.get("/health")
 def health():
     return {"status": "ok"}
+
+
+@app.post("/admin/enviar-alertas")
+def enviar_alertas_manual(current_user: models.Usuario = Depends(auth.require_admin)):
+    return ejecutar_revision_alertas()
 
 
 # ---------- Autenticación ----------
