@@ -70,6 +70,7 @@ class Tramite(Base):
     empresa_cliente_id = Column(UUID(as_uuid=True), ForeignKey("empresa_cliente.id"), nullable=False)
     tipo_tramite_id = Column(UUID(as_uuid=True), ForeignKey("tipo_tramite.id"), nullable=False)
     asignado_a = Column(UUID(as_uuid=True), ForeignKey("usuario.id"), nullable=True)
+    creado_por_id = Column(UUID(as_uuid=True), ForeignKey("usuario.id"), nullable=True)
     numero_expediente = Column(String(100))
     fecha_inicio = Column(Date, nullable=False, default=date.today)
     fecha_vencimiento = Column(Date, nullable=True)
@@ -81,6 +82,7 @@ class Tramite(Base):
 
     empresa_cliente = relationship("EmpresaCliente", back_populates="tramites")
     tipo_tramite = relationship("TipoTramite")
+    creado_por = relationship("Usuario", foreign_keys=[creado_por_id])
 
 
 class UsuarioEmpresaCliente(Base):

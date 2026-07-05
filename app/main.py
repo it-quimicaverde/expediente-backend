@@ -241,6 +241,7 @@ def proximos_a_vencer(
         .options(
             joinedload(models.Tramite.empresa_cliente),
             joinedload(models.Tramite.tipo_tramite),
+            joinedload(models.Tramite.creado_por),
         )
         .filter(models.Tramite.fecha_vencimiento.isnot(None))
         .filter(models.Tramite.fecha_vencimiento <= limite)
@@ -260,6 +261,7 @@ def proximos_a_vencer(
             numero_expediente=t.numero_expediente,
             fecha_vencimiento=t.fecha_vencimiento,
             estado=t.estado,
+            creado_por_nombre=t.creado_por.nombre if t.creado_por else None,
         )
         for t in tramites
     ]
@@ -283,6 +285,7 @@ def crear_tramite(
         data["fecha_vencimiento"] = data["fecha_inicio"] + relativedelta(months=tipo.vigencia_meses)
 
     nuevo = models.Tramite(**data)
+    nuevo.creado_por_id = current_user.id
     nuevo.checklist = [{"item": doc, "completado": False} for doc in (tipo.checklist_default or [])]
     db.add(nuevo)
     db.commit()
@@ -299,7 +302,7 @@ def tramites_de_empresa(
     verificar_acceso_empresa(db, current_user, empresa_id)
     tramites = (
         db.query(models.Tramite)
-        .options(joinedload(models.Tramite.tipo_tramite))
+        .options(joinedload(models.Tramite.tipo_tramite), joinedload(models.Tramite.creado_por))
         .filter(models.Tramite.empresa_cliente_id == empresa_id)
         .order_by(models.Tramite.fecha_vencimiento)
         .all()
@@ -314,6 +317,7 @@ def tramites_de_empresa(
             fecha_vencimiento=t.fecha_vencimiento,
             estado=t.estado,
             checklist=t.checklist or [],
+            creado_por_nombre=t.creado_por.nombre if t.creado_por else None,
         )
         for t in tramites
     ]
@@ -328,7 +332,7 @@ def editar_tramite(
 ):
     tramite = (
         db.query(models.Tramite)
-        .options(joinedload(models.Tramite.tipo_tramite))
+        .options(joinedload(models.Tramite.tipo_tramite), joinedload(models.Tramite.creado_por))
         .filter(models.Tramite.id == tramite_id)
         .first()
     )
@@ -346,6 +350,7 @@ def editar_tramite(
         categoria=tramite.tipo_tramite.categoria,
         numero_expediente=tramite.numero_expediente,
         fecha_inicio=tramite.fecha_inicio,
+        creado_por_nombre=tramite.creado_por.nombre if tramite.creado_por else None,
         fecha_vencimiento=tramite.fecha_vencimiento,
         estado=tramite.estado,
         checklist=tramite.checklist or [],

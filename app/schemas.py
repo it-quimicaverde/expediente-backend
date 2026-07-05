@@ -112,6 +112,7 @@ class TramiteDashboardOut(BaseModel):
     numero_expediente: Optional[str] = None
     fecha_vencimiento: Optional[date] = None
     estado: str
+    creado_por_nombre: Optional[str] = None
 
 
 class TramiteUpdate(BaseModel):
@@ -132,3 +133,4 @@ class TramiteEmpresaOut(BaseModel):
     fecha_vencimiento: Optional[date] = None
     estado: str
     checklist: List[dict] = []
+    creado_por_nombre: Optional[str] = None
