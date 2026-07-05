@@ -215,14 +215,57 @@ def listar_tipos_tramite(
 
 
 # ---------- Trámites ----------
+@app.get("/tramites/buscar", response_model=List[schemas.TramiteDashboardOut])
+def buscar_tramites(
+    q: str = "",
+    db: Session = Depends(get_db),
+    current_user: models.Usuario = Depends(auth.get_current_user),
+):
+    if not q or len(q) < 2:
+        return []
+
+    query = (
+        db.query(models.Tramite)
+        .options(
+            joinedload(models.Tramite.empresa_cliente),
+            joinedload(models.Tramite.tipo_tramite),
+            joinedload(models.Tramite.creado_por),
+        )
+        .filter(models.Tramite.numero_expediente.ilike(f"%{q}%"))
+    )
+    if current_user.rol != "admin":
+        asignadas = empresas_asignadas_ids(db, current_user.id)
+        query = query.filter(models.Tramite.empresa_cliente_id.in_(asignadas))
+
+    tramites = query.limit(20).all()
+    return [
+        schemas.TramiteDashboardOut(
+            id=t.id,
+            empresa_id=t.empresa_cliente_id,
+            empresa_nombre=t.empresa_cliente.nombre,
+            tramite_nombre=t.tipo_tramite.nombre,
+            categoria=t.tipo_tramite.categoria,
+            numero_expediente=t.numero_expediente,
+            fecha_vencimiento=t.fecha_vencimiento,
+            estado=t.estado,
+            creado_por_nombre=t.creado_por.nombre if t.creado_por else None,
+        )
+        for t in tramites
+    ]
+
+
 @app.get("/dashboard/resumen", response_model=schemas.DashboardResumen)
 def resumen_dashboard(
+    gestor_id: str = "",
     db: Session = Depends(get_db),
     current_user: models.Usuario = Depends(auth.get_current_user),
 ):
     query = db.query(models.EmpresaCliente)
     if current_user.rol != "admin":
         asignadas = empresas_asignadas_ids(db, current_user.id)
+        query = query.filter(models.EmpresaCliente.id.in_(asignadas))
+    elif gestor_id:
+        asignadas = empresas_asignadas_ids(db, gestor_id)
         query = query.filter(models.EmpresaCliente.id.in_(asignadas))
 
     empresas = query.all()
@@ -234,6 +277,7 @@ def resumen_dashboard(
 @app.get("/dashboard/proximos-vencer", response_model=List[schemas.TramiteDashboardOut])
 def proximos_a_vencer(
     dias: int = 30,
+    gestor_id: str = "",
     db: Session = Depends(get_db),
     current_user: models.Usuario = Depends(auth.get_current_user),
 ):
@@ -250,6 +294,9 @@ def proximos_a_vencer(
     )
     if current_user.rol != "admin":
         asignadas = empresas_asignadas_ids(db, current_user.id)
+        query = query.filter(models.Tramite.empresa_cliente_id.in_(asignadas))
+    elif gestor_id:
+        asignadas = empresas_asignadas_ids(db, gestor_id)
         query = query.filter(models.Tramite.empresa_cliente_id.in_(asignadas))
 
     tramites = query.order_by(asc(models.Tramite.fecha_vencimiento)).all()
