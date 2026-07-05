@@ -1,32 +1,35 @@
 import os
-import smtplib
-from email.mime.multipart import MIMEMultipart
-from email.mime.text import MIMEText
+import requests
 
-SMTP_EMAIL = os.getenv("SMTP_EMAIL", "")
-SMTP_APP_PASSWORD = os.getenv("SMTP_APP_PASSWORD", "")
-SMTP_HOST = "smtp.gmail.com"
-SMTP_PORT = 465
+RESEND_API_KEY = os.getenv("RESEND_API_KEY", "")
+# Mientras la cuenta de Resend no tenga un dominio verificado, solo puede mandar
+# correos a la misma dirección con la que se registró la cuenta.
+ALERT_FROM_EMAIL = os.getenv("ALERT_FROM_EMAIL", "Expediente <onboarding@resend.dev>")
 
 
 def enviar_correo(destinatarios: list, asunto: str, html: str) -> bool:
-    if not SMTP_EMAIL or not SMTP_APP_PASSWORD:
-        print("SMTP_EMAIL/SMTP_APP_PASSWORD no configurados; correo no enviado:", asunto)
+    if not RESEND_API_KEY:
+        print("RESEND_API_KEY no configurada; correo no enviado:", asunto)
         return False
     if not destinatarios:
         return False
 
-    msg = MIMEMultipart("alternative")
-    msg["Subject"] = asunto
-    msg["From"] = f"Expediente <{SMTP_EMAIL}>"
-    msg["To"] = ", ".join(destinatarios)
-    msg.attach(MIMEText(html, "html"))
-
     try:
-        with smtplib.SMTP_SSL(SMTP_HOST, SMTP_PORT, timeout=15) as server:
-            server.login(SMTP_EMAIL, SMTP_APP_PASSWORD)
-            server.sendmail(SMTP_EMAIL, destinatarios, msg.as_string())
+        resp = requests.post(
+            "https://api.resend.com/emails",
+            headers={"Authorization": f"Bearer {RESEND_API_KEY}"},
+            json={
+                "from": ALERT_FROM_EMAIL,
+                "to": destinatarios,
+                "subject": asunto,
+                "html": html,
+            },
+            timeout=15,
+        )
+        if resp.status_code >= 400:
+            print("Error de Resend:", resp.status_code, resp.text)
+            return False
         return True
-    except Exception as e:
-        print("Error al enviar correo por SMTP:", e)
+    except requests.RequestException as e:
+        print("Error de red al enviar correo:", e)
         return False
