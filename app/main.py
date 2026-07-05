@@ -75,6 +75,8 @@ def me(current_user: models.Usuario = Depends(auth.get_current_user)):
 @app.get("/empresas", response_model=List[schemas.EmpresaClienteOut])
 def listar_empresas(
     q: str = "",
+    limit: int = 100,
+    offset: int = 0,
     db: Session = Depends(get_db),
     current_user: models.Usuario = Depends(auth.get_current_user),
 ):
@@ -84,7 +86,7 @@ def listar_empresas(
         query = query.filter(models.EmpresaCliente.id.in_(asignadas))
     if q:
         query = query.filter(models.EmpresaCliente.nombre.ilike(f"%{q}%"))
-    return query.order_by(models.EmpresaCliente.nombre).limit(100).all()
+    return query.order_by(models.EmpresaCliente.nombre).offset(offset).limit(min(limit, 200)).all()
 
 
 @app.post("/empresas", response_model=schemas.EmpresaClienteOut)
