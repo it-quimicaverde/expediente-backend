@@ -1,34 +1,32 @@
 import os
-import requests
+import smtplib
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
 
-RESEND_API_KEY = os.getenv("RESEND_API_KEY", "")
-# Mientras no tengas dominio propio verificado en Resend, usa su remitente de pruebas.
-ALERT_FROM_EMAIL = os.getenv("ALERT_FROM_EMAIL", "Expediente <onboarding@resend.dev>")
+SMTP_EMAIL = os.getenv("SMTP_EMAIL", "")
+SMTP_APP_PASSWORD = os.getenv("SMTP_APP_PASSWORD", "")
+SMTP_HOST = "smtp.gmail.com"
+SMTP_PORT = 465
 
 
 def enviar_correo(destinatarios: list, asunto: str, html: str) -> bool:
-    if not RESEND_API_KEY:
-        print("RESEND_API_KEY no configurada; correo no enviado:", asunto)
+    if not SMTP_EMAIL or not SMTP_APP_PASSWORD:
+        print("SMTP_EMAIL/SMTP_APP_PASSWORD no configurados; correo no enviado:", asunto)
         return False
     if not destinatarios:
         return False
 
+    msg = MIMEMultipart("alternative")
+    msg["Subject"] = asunto
+    msg["From"] = f"Expediente <{SMTP_EMAIL}>"
+    msg["To"] = ", ".join(destinatarios)
+    msg.attach(MIMEText(html, "html"))
+
     try:
-        resp = requests.post(
-            "https://api.resend.com/emails",
-            headers={"Authorization": f"Bearer {RESEND_API_KEY}"},
-            json={
-                "from": ALERT_FROM_EMAIL,
-                "to": destinatarios,
-                "subject": asunto,
-                "html": html,
-            },
-            timeout=15,
-        )
-        if resp.status_code >= 400:
-            print("Error de Resend:", resp.status_code, resp.text)
-            return False
+        with smtplib.SMTP_SSL(SMTP_HOST, SMTP_PORT, timeout=15) as server:
+            server.login(SMTP_EMAIL, SMTP_APP_PASSWORD)
+            server.sendmail(SMTP_EMAIL, destinatarios, msg.as_string())
         return True
-    except requests.RequestException as e:
-        print("Error de red al enviar correo:", e)
+    except Exception as e:
+        print("Error al enviar correo por SMTP:", e)
         return False
