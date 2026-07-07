@@ -187,6 +187,28 @@ def crear_usuario(
     return nuevo
 
 
+@app.patch("/usuarios/{usuario_id}", response_model=schemas.UsuarioOut)
+def editar_usuario(
+    usuario_id: UUID,
+    cambios: schemas.UsuarioUpdate,
+    db: Session = Depends(get_db),
+    current_user: models.Usuario = Depends(auth.require_admin),
+):
+    usuario = db.query(models.Usuario).filter(models.Usuario.id == usuario_id).first()
+    if not usuario:
+        raise HTTPException(status_code=404, detail="Usuario no encontrado")
+
+    if usuario.id == current_user.id and cambios.rol and cambios.rol != "admin":
+        raise HTTPException(status_code=400, detail="No puedes quitarte a ti mismo el rol de admin")
+
+    for campo, valor in cambios.model_dump(exclude_unset=True).items():
+        setattr(usuario, campo, valor)
+
+    db.commit()
+    db.refresh(usuario)
+    return usuario
+
+
 @app.get("/empresas/{empresa_id}/gestores", response_model=List[schemas.UsuarioOut])
 def listar_gestores_de_empresa(
     empresa_id: UUID,
@@ -509,7 +531,12 @@ def editar_tramite(
 ):
     tramite = (
         db.query(models.Tramite)
-        .options(joinedload(models.Tramite.tipo_tramite), joinedload(models.Tramite.creado_por), joinedload(models.Tramite.asignado_a_usuario))
+        .options(
+            joinedload(models.Tramite.tipo_tramite),
+            joinedload(models.Tramite.creado_por),
+            joinedload(models.Tramite.asignado_a_usuario),
+            joinedload(models.Tramite.empresa_cliente),
+        )
         .filter(models.Tramite.id == tramite_id)
         .first()
     )
@@ -525,6 +552,9 @@ def editar_tramite(
         if str(valor_anterior) != str(valor_nuevo):
             db.add(models.AuditoriaTramite(
                 tramite_id=tramite.id,
+                empresa_id=tramite.empresa_cliente_id,
+                empresa_nombre=tramite.empresa_cliente.nombre,
+                tramite_nombre=tramite.tipo_tramite.nombre,
                 usuario_id=current_user.id,
                 campo=campo,
                 valor_anterior=str(valor_anterior) if valor_anterior is not None else None,
@@ -549,6 +579,34 @@ def editar_tramite(
         estado=tramite.estado,
         checklist=tramite.checklist or [],
     )
+
+
+@app.get("/empresas/{empresa_id}/auditoria", response_model=List[schemas.AuditoriaOut])
+def historial_empresa(
+    empresa_id: UUID,
+    db: Session = Depends(get_db),
+    current_user: models.Usuario = Depends(auth.get_current_user),
+):
+    verificar_acceso_empresa(db, current_user, empresa_id)
+    entradas = (
+        db.query(models.AuditoriaTramite)
+        .options(joinedload(models.AuditoriaTramite.usuario))
+        .filter(models.AuditoriaTramite.empresa_id == empresa_id)
+        .order_by(models.AuditoriaTramite.creado_en.desc())
+        .limit(200)
+        .all()
+    )
+    return [
+        schemas.AuditoriaOut(
+            campo=e.campo,
+            valor_anterior=e.valor_anterior,
+            valor_nuevo=e.valor_nuevo,
+            usuario_nombre=e.usuario.nombre if e.usuario else None,
+            creado_en=e.creado_en,
+            tramite_nombre=e.tramite_nombre,
+        )
+        for e in entradas
+    ]
 
 
 @app.get("/tramites/{tramite_id}/auditoria", response_model=List[schemas.AuditoriaOut])
@@ -587,9 +645,25 @@ def borrar_tramite(
     db: Session = Depends(get_db),
     current_user: models.Usuario = Depends(auth.require_admin),
 ):
-    tramite = db.query(models.Tramite).filter(models.Tramite.id == tramite_id).first()
+    tramite = (
+        db.query(models.Tramite)
+        .options(joinedload(models.Tramite.tipo_tramite), joinedload(models.Tramite.empresa_cliente))
+        .filter(models.Tramite.id == tramite_id)
+        .first()
+    )
     if not tramite:
         raise HTTPException(status_code=404, detail="Trámite no encontrado")
+
+    db.add(models.AuditoriaTramite(
+        tramite_id=tramite.id,
+        empresa_id=tramite.empresa_cliente_id,
+        empresa_nombre=tramite.empresa_cliente.nombre,
+        tramite_nombre=tramite.tipo_tramite.nombre,
+        usuario_id=current_user.id,
+        campo="eliminado",
+        valor_anterior="activo",
+        valor_nuevo="trámite eliminado",
+    ))
     db.delete(tramite)
     db.commit()
     return None

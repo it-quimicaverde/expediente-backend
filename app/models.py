@@ -95,7 +95,10 @@ class UsuarioEmpresaCliente(Base):
 class AuditoriaTramite(Base):
     __tablename__ = "auditoria_tramite"
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    tramite_id = Column(UUID(as_uuid=True), ForeignKey("tramite.id", ondelete="CASCADE"), nullable=False)
+    tramite_id = Column(UUID(as_uuid=True), nullable=False)  # sin FK: debe sobrevivir al borrado del trámite
+    empresa_id = Column(UUID(as_uuid=True), nullable=True)
+    empresa_nombre = Column(Text, nullable=True)
+    tramite_nombre = Column(Text, nullable=True)
     usuario_id = Column(UUID(as_uuid=True), ForeignKey("usuario.id"), nullable=True)
     campo = Column(String(50), nullable=False)
     valor_anterior = Column(Text, nullable=True)

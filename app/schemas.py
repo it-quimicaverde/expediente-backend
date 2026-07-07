@@ -82,6 +82,7 @@ class UsuarioOut(BaseModel):
     nombre: str
     email: EmailStr
     rol: str
+    activo: bool = True
 
     class Config:
         from_attributes = True
@@ -92,6 +93,12 @@ class UsuarioCreate(BaseModel):
     email: EmailStr
     password: str
     rol: str = "gestor"
+
+
+class UsuarioUpdate(BaseModel):
+    nombre: Optional[str] = None
+    rol: Optional[str] = None
+    activo: Optional[bool] = None
 
 
 class AsignacionEmpresas(BaseModel):
@@ -134,6 +141,7 @@ class AuditoriaOut(BaseModel):
     valor_nuevo: Optional[str] = None
     usuario_nombre: Optional[str] = None
     creado_en: datetime
+    tramite_nombre: Optional[str] = None
 
 
 class TramiteUpdate(BaseModel):
