@@ -92,6 +92,19 @@ class UsuarioEmpresaCliente(Base):
     empresa_cliente_id = Column(UUID(as_uuid=True), ForeignKey("empresa_cliente.id"), primary_key=True)
 
 
+class AuditoriaTramite(Base):
+    __tablename__ = "auditoria_tramite"
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tramite_id = Column(UUID(as_uuid=True), ForeignKey("tramite.id", ondelete="CASCADE"), nullable=False)
+    usuario_id = Column(UUID(as_uuid=True), ForeignKey("usuario.id"), nullable=True)
+    campo = Column(String(50), nullable=False)
+    valor_anterior = Column(Text, nullable=True)
+    valor_nuevo = Column(Text, nullable=True)
+    creado_en = Column(DateTime(timezone=True), default=datetime.utcnow)
+
+    usuario = relationship("Usuario")
+
+
 class Alerta(Base):
     __tablename__ = "alerta"
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)

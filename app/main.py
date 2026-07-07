@@ -1,9 +1,12 @@
+import csv
+import io
 from datetime import date, timedelta
 from typing import List
 from uuid import UUID
 
+from dateutil import parser as date_parser
 from dateutil.relativedelta import relativedelta
-from fastapi import FastAPI, Depends, HTTPException
+from fastapi import FastAPI, Depends, HTTPException, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session, joinedload
@@ -228,6 +231,112 @@ def listar_tipos_tramite(
 
 
 # ---------- Trámites ----------
+@app.post("/tramites/importar-csv", response_model=schemas.ImportacionResultado)
+def importar_tramites_csv(
+    archivo: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    current_user: models.Usuario = Depends(auth.require_admin),
+):
+    """
+    Columnas esperadas en el CSV (con encabezados exactos):
+    empresa_nombre, categoria, tipo_tramite_nombre, tipo_gestion (opcional),
+    fecha_inicio, numero_expediente (opcional), fecha_vencimiento (opcional)
+    """
+    org = db.query(models.Organizacion).first()
+
+    contenido = archivo.file.read().decode("utf-8-sig")
+    reader = csv.DictReader(io.StringIO(contenido))
+
+    errores = []
+    creados = 0
+    empresas_creadas = 0
+    empresas_cache = {}
+    total_filas = 0
+
+    for i, fila in enumerate(reader, start=2):  # fila 1 es el encabezado
+        total_filas += 1
+        try:
+            empresa_nombre = (fila.get("empresa_nombre") or "").strip()
+            categoria = (fila.get("categoria") or "").strip().lower()
+            tipo_nombre = (fila.get("tipo_tramite_nombre") or "").strip()
+            tipo_gestion = (fila.get("tipo_gestion") or "").strip()
+            fecha_inicio_raw = (fila.get("fecha_inicio") or "").strip()
+            numero_expediente = (fila.get("numero_expediente") or "").strip() or None
+            fecha_vencimiento_raw = (fila.get("fecha_vencimiento") or "").strip()
+
+            if not empresa_nombre or not categoria or not tipo_nombre or not fecha_inicio_raw:
+                errores.append(schemas.ImportacionError(
+                    fila=i, motivo="Faltan datos obligatorios (empresa, categoría, tipo de trámite o fecha de inicio)"
+                ))
+                continue
+
+            fecha_inicio = date_parser.parse(fecha_inicio_raw, dayfirst=True).date()
+            fecha_vencimiento = None
+            if fecha_vencimiento_raw:
+                fecha_vencimiento = date_parser.parse(fecha_vencimiento_raw, dayfirst=True).date()
+
+            # Buscar o crear la empresa
+            clave_empresa = empresa_nombre.lower()
+            if clave_empresa in empresas_cache:
+                empresa = empresas_cache[clave_empresa]
+            else:
+                empresa = (
+                    db.query(models.EmpresaCliente)
+                    .filter(models.EmpresaCliente.nombre.ilike(empresa_nombre))
+                    .first()
+                )
+                if not empresa:
+                    empresa = models.EmpresaCliente(organizacion_id=org.id, nombre=empresa_nombre)
+                    db.add(empresa)
+                    db.flush()
+                    empresas_creadas += 1
+                empresas_cache[clave_empresa] = empresa
+
+            # Buscar el tipo de trámite en el catálogo
+            tipo_query = db.query(models.TipoTramite).filter(
+                models.TipoTramite.categoria == categoria,
+                models.TipoTramite.nombre.ilike(tipo_nombre),
+            )
+            if tipo_gestion:
+                tipo_query = tipo_query.filter(models.TipoTramite.tipo_gestion.ilike(tipo_gestion))
+            tipo = tipo_query.first()
+
+            if not tipo:
+                errores.append(schemas.ImportacionError(
+                    fila=i,
+                    motivo=f"No se encontró en el catálogo: categoría '{categoria}', trámite '{tipo_nombre}'"
+                    + (f", gestión '{tipo_gestion}'" if tipo_gestion else ""),
+                ))
+                continue
+
+            if not fecha_vencimiento and tipo.vigencia_meses:
+                fecha_vencimiento = fecha_inicio + relativedelta(months=tipo.vigencia_meses)
+
+            nuevo = models.Tramite(
+                empresa_cliente_id=empresa.id,
+                tipo_tramite_id=tipo.id,
+                numero_expediente=numero_expediente,
+                fecha_inicio=fecha_inicio,
+                fecha_vencimiento=fecha_vencimiento,
+                creado_por_id=current_user.id,
+                checklist=[{"item": doc, "completado": False} for doc in (tipo.checklist_default or [])],
+            )
+            db.add(nuevo)
+            creados += 1
+
+        except Exception as e:
+            errores.append(schemas.ImportacionError(fila=i, motivo=f"Error inesperado: {str(e)}"))
+
+    db.commit()
+
+    return schemas.ImportacionResultado(
+        total_filas=total_filas,
+        creados=creados,
+        empresas_creadas=empresas_creadas,
+        errores=errores,
+    )
+
+
 @app.get("/tramites/buscar", response_model=List[schemas.TramiteDashboardOut])
 def buscar_tramites(
     q: str = "",
@@ -407,7 +516,22 @@ def editar_tramite(
     if not tramite:
         raise HTTPException(status_code=404, detail="Trámite no encontrado")
 
-    for campo, valor in cambios.model_dump(exclude_unset=True).items():
+    CAMPOS_AUDITABLES = {"numero_expediente", "fecha_inicio", "fecha_vencimiento", "estado", "asignado_a", "notas"}
+    cambios_dict = cambios.model_dump(exclude_unset=True)
+    for campo, valor_nuevo in cambios_dict.items():
+        if campo not in CAMPOS_AUDITABLES:
+            continue
+        valor_anterior = getattr(tramite, campo)
+        if str(valor_anterior) != str(valor_nuevo):
+            db.add(models.AuditoriaTramite(
+                tramite_id=tramite.id,
+                usuario_id=current_user.id,
+                campo=campo,
+                valor_anterior=str(valor_anterior) if valor_anterior is not None else None,
+                valor_nuevo=str(valor_nuevo) if valor_nuevo is not None else None,
+            ))
+
+    for campo, valor in cambios_dict.items():
         setattr(tramite, campo, valor)
 
     db.commit()
@@ -425,6 +549,36 @@ def editar_tramite(
         estado=tramite.estado,
         checklist=tramite.checklist or [],
     )
+
+
+@app.get("/tramites/{tramite_id}/auditoria", response_model=List[schemas.AuditoriaOut])
+def historial_tramite(
+    tramite_id: UUID,
+    db: Session = Depends(get_db),
+    current_user: models.Usuario = Depends(auth.get_current_user),
+):
+    tramite = db.query(models.Tramite).filter(models.Tramite.id == tramite_id).first()
+    if not tramite:
+        raise HTTPException(status_code=404, detail="Trámite no encontrado")
+    verificar_acceso_empresa(db, current_user, tramite.empresa_cliente_id)
+
+    entradas = (
+        db.query(models.AuditoriaTramite)
+        .options(joinedload(models.AuditoriaTramite.usuario))
+        .filter(models.AuditoriaTramite.tramite_id == tramite_id)
+        .order_by(models.AuditoriaTramite.creado_en.desc())
+        .all()
+    )
+    return [
+        schemas.AuditoriaOut(
+            campo=e.campo,
+            valor_anterior=e.valor_anterior,
+            valor_nuevo=e.valor_nuevo,
+            usuario_nombre=e.usuario.nombre if e.usuario else None,
+            creado_en=e.creado_en,
+        )
+        for e in entradas
+    ]
 
 
 @app.delete("/tramites/{tramite_id}", status_code=204)

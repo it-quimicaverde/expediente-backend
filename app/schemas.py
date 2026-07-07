@@ -116,6 +116,26 @@ class TramiteDashboardOut(BaseModel):
     asignado_a_nombre: Optional[str] = None
 
 
+class ImportacionError(BaseModel):
+    fila: int
+    motivo: str
+
+
+class ImportacionResultado(BaseModel):
+    total_filas: int
+    creados: int
+    empresas_creadas: int
+    errores: List[ImportacionError]
+
+
+class AuditoriaOut(BaseModel):
+    campo: str
+    valor_anterior: Optional[str] = None
+    valor_nuevo: Optional[str] = None
+    usuario_nombre: Optional[str] = None
+    creado_en: datetime
+
+
 class TramiteUpdate(BaseModel):
     numero_expediente: Optional[str] = None
     fecha_inicio: Optional[date] = None
