@@ -83,6 +83,7 @@ class Tramite(Base):
     empresa_cliente = relationship("EmpresaCliente", back_populates="tramites")
     tipo_tramite = relationship("TipoTramite")
     creado_por = relationship("Usuario", foreign_keys=[creado_por_id])
+    asignado_a_usuario = relationship("Usuario", foreign_keys=[asignado_a])
 
 
 class UsuarioEmpresaCliente(Base):

@@ -139,6 +139,19 @@ def editar_empresa(
 
 
 # ---------- Usuarios (gestión de cuentas, solo admin) ----------
+@app.get("/gestores", response_model=List[schemas.UsuarioOut])
+def listar_gestores_disponibles(
+    db: Session = Depends(get_db),
+    current_user: models.Usuario = Depends(auth.get_current_user),
+):
+    return (
+        db.query(models.Usuario)
+        .filter(models.Usuario.activo.is_(True))
+        .order_by(models.Usuario.nombre)
+        .all()
+    )
+
+
 @app.get("/usuarios", response_model=List[schemas.UsuarioOut])
 def listar_usuarios(
     db: Session = Depends(get_db),
@@ -230,6 +243,7 @@ def buscar_tramites(
             joinedload(models.Tramite.empresa_cliente),
             joinedload(models.Tramite.tipo_tramite),
             joinedload(models.Tramite.creado_por),
+            joinedload(models.Tramite.asignado_a_usuario),
         )
         .filter(models.Tramite.numero_expediente.ilike(f"%{q}%"))
     )
@@ -249,6 +263,7 @@ def buscar_tramites(
             fecha_vencimiento=t.fecha_vencimiento,
             estado=t.estado,
             creado_por_nombre=t.creado_por.nombre if t.creado_por else None,
+            asignado_a_nombre=t.asignado_a_usuario.nombre if t.asignado_a_usuario else None,
         )
         for t in tramites
     ]
@@ -288,6 +303,7 @@ def proximos_a_vencer(
             joinedload(models.Tramite.empresa_cliente),
             joinedload(models.Tramite.tipo_tramite),
             joinedload(models.Tramite.creado_por),
+            joinedload(models.Tramite.asignado_a_usuario),
         )
         .filter(models.Tramite.fecha_vencimiento.isnot(None))
         .filter(models.Tramite.fecha_vencimiento <= limite)
@@ -311,6 +327,7 @@ def proximos_a_vencer(
             fecha_vencimiento=t.fecha_vencimiento,
             estado=t.estado,
             creado_por_nombre=t.creado_por.nombre if t.creado_por else None,
+            asignado_a_nombre=t.asignado_a_usuario.nombre if t.asignado_a_usuario else None,
         )
         for t in tramites
     ]
@@ -351,7 +368,7 @@ def tramites_de_empresa(
     verificar_acceso_empresa(db, current_user, empresa_id)
     tramites = (
         db.query(models.Tramite)
-        .options(joinedload(models.Tramite.tipo_tramite), joinedload(models.Tramite.creado_por))
+        .options(joinedload(models.Tramite.tipo_tramite), joinedload(models.Tramite.creado_por), joinedload(models.Tramite.asignado_a_usuario))
         .filter(models.Tramite.empresa_cliente_id == empresa_id)
         .order_by(models.Tramite.fecha_vencimiento)
         .all()
@@ -367,6 +384,8 @@ def tramites_de_empresa(
             estado=t.estado,
             checklist=t.checklist or [],
             creado_por_nombre=t.creado_por.nombre if t.creado_por else None,
+            asignado_a=t.asignado_a,
+            asignado_a_nombre=t.asignado_a_usuario.nombre if t.asignado_a_usuario else None,
         )
         for t in tramites
     ]
@@ -381,7 +400,7 @@ def editar_tramite(
 ):
     tramite = (
         db.query(models.Tramite)
-        .options(joinedload(models.Tramite.tipo_tramite), joinedload(models.Tramite.creado_por))
+        .options(joinedload(models.Tramite.tipo_tramite), joinedload(models.Tramite.creado_por), joinedload(models.Tramite.asignado_a_usuario))
         .filter(models.Tramite.id == tramite_id)
         .first()
     )
@@ -400,6 +419,8 @@ def editar_tramite(
         numero_expediente=tramite.numero_expediente,
         fecha_inicio=tramite.fecha_inicio,
         creado_por_nombre=tramite.creado_por.nombre if tramite.creado_por else None,
+        asignado_a=tramite.asignado_a,
+        asignado_a_nombre=tramite.asignado_a_usuario.nombre if tramite.asignado_a_usuario else None,
         fecha_vencimiento=tramite.fecha_vencimiento,
         estado=tramite.estado,
         checklist=tramite.checklist or [],

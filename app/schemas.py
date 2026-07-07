@@ -113,6 +113,7 @@ class TramiteDashboardOut(BaseModel):
     fecha_vencimiento: Optional[date] = None
     estado: str
     creado_por_nombre: Optional[str] = None
+    asignado_a_nombre: Optional[str] = None
 
 
 class TramiteUpdate(BaseModel):
@@ -122,6 +123,7 @@ class TramiteUpdate(BaseModel):
     estado: Optional[str] = None
     notas: Optional[str] = None
     checklist: Optional[List[dict]] = None
+    asignado_a: Optional[UUID] = None
 
 
 class TramiteEmpresaOut(BaseModel):
@@ -134,3 +136,5 @@ class TramiteEmpresaOut(BaseModel):
     estado: str
     checklist: List[dict] = []
     creado_por_nombre: Optional[str] = None
+    asignado_a: Optional[UUID] = None
+    asignado_a_nombre: Optional[str] = None
