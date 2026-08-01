@@ -662,7 +662,11 @@ def crear_reparo(
     if any(r.numero == datos.numero for r in tramite.reparos):
         raise HTTPException(status_code=400, detail=f"Ya existe el reparo N° {datos.numero} para este trámite")
 
-    nuevo = models.Reparo(tramite_id=tramite.id, **datos.model_dump())
+    data = datos.model_dump()
+    if data.get("fecha_emision") and not data.get("fecha_vencimiento"):
+        data["fecha_vencimiento"] = data["fecha_emision"] + relativedelta(months=3)
+
+    nuevo = models.Reparo(tramite_id=tramite.id, **data)
     db.add(nuevo)
 
     db.add(models.AuditoriaTramite(
@@ -700,7 +704,11 @@ def editar_reparo(
     )
     verificar_acceso_empresa(db, current_user, tramite.empresa_cliente_id)
 
-    for campo, valor in cambios.model_dump(exclude_unset=True).items():
+    cambios_dict = cambios.model_dump(exclude_unset=True)
+    if cambios_dict.get("fecha_emision") and not cambios_dict.get("fecha_vencimiento"):
+        cambios_dict["fecha_vencimiento"] = cambios_dict["fecha_emision"] + relativedelta(months=3)
+
+    for campo, valor in cambios_dict.items():
         setattr(reparo, campo, valor)
 
     db.commit()
