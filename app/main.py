@@ -49,6 +49,36 @@ def verificar_acceso_empresa(db: Session, current_user: models.Usuario, empresa_
         raise HTTPException(status_code=403, detail="No tienes esta empresa asignada")
 
 
+def construir_tramite_out(t: models.Tramite) -> schemas.TramiteEmpresaOut:
+    return schemas.TramiteEmpresaOut(
+        id=t.id,
+        tramite_nombre=t.tipo_tramite.nombre,
+        categoria=t.tipo_tramite.categoria,
+        numero_expediente=t.numero_expediente,
+        fecha_inicio=t.fecha_inicio,
+        fecha_vencimiento=t.fecha_vencimiento,
+        estado=t.estado,
+        checklist=t.checklist or [],
+        creado_por_nombre=t.creado_por.nombre if t.creado_por else None,
+        asignado_a=t.asignado_a,
+        asignado_a_nombre=t.asignado_a_usuario.nombre if t.asignado_a_usuario else None,
+        fecha_paso_firma=t.fecha_paso_firma,
+        fecha_salida_mensajeria=t.fecha_salida_mensajeria,
+        fecha_ingreso=t.fecha_ingreso,
+        resolucion_final=t.resolucion_final,
+        reparos=[schemas.ReparoOut.model_validate(r) for r in sorted(t.reparos, key=lambda r: r.numero)],
+    )
+
+
+TRAMITE_JOINS = (
+    joinedload(models.Tramite.tipo_tramite),
+    joinedload(models.Tramite.creado_por),
+    joinedload(models.Tramite.asignado_a_usuario),
+    joinedload(models.Tramite.empresa_cliente),
+    joinedload(models.Tramite.reparos),
+)
+
+
 @app.get("/health")
 def health():
     return {"status": "ok"}
@@ -499,27 +529,12 @@ def tramites_de_empresa(
     verificar_acceso_empresa(db, current_user, empresa_id)
     tramites = (
         db.query(models.Tramite)
-        .options(joinedload(models.Tramite.tipo_tramite), joinedload(models.Tramite.creado_por), joinedload(models.Tramite.asignado_a_usuario))
+        .options(*TRAMITE_JOINS)
         .filter(models.Tramite.empresa_cliente_id == empresa_id)
         .order_by(models.Tramite.fecha_vencimiento)
         .all()
     )
-    return [
-        schemas.TramiteEmpresaOut(
-            id=t.id,
-            tramite_nombre=t.tipo_tramite.nombre,
-            categoria=t.tipo_tramite.categoria,
-            numero_expediente=t.numero_expediente,
-            fecha_inicio=t.fecha_inicio,
-            fecha_vencimiento=t.fecha_vencimiento,
-            estado=t.estado,
-            checklist=t.checklist or [],
-            creado_por_nombre=t.creado_por.nombre if t.creado_por else None,
-            asignado_a=t.asignado_a,
-            asignado_a_nombre=t.asignado_a_usuario.nombre if t.asignado_a_usuario else None,
-        )
-        for t in tramites
-    ]
+    return [construir_tramite_out(t) for t in tramites]
 
 
 @app.patch("/tramites/{tramite_id}", response_model=schemas.TramiteEmpresaOut)
@@ -531,19 +546,17 @@ def editar_tramite(
 ):
     tramite = (
         db.query(models.Tramite)
-        .options(
-            joinedload(models.Tramite.tipo_tramite),
-            joinedload(models.Tramite.creado_por),
-            joinedload(models.Tramite.asignado_a_usuario),
-            joinedload(models.Tramite.empresa_cliente),
-        )
+        .options(*TRAMITE_JOINS)
         .filter(models.Tramite.id == tramite_id)
         .first()
     )
     if not tramite:
         raise HTTPException(status_code=404, detail="Trámite no encontrado")
 
-    CAMPOS_AUDITABLES = {"numero_expediente", "fecha_inicio", "fecha_vencimiento", "estado", "asignado_a", "notas"}
+    CAMPOS_AUDITABLES = {
+        "numero_expediente", "fecha_inicio", "fecha_vencimiento", "estado", "asignado_a", "notas",
+        "fecha_paso_firma", "fecha_salida_mensajeria", "fecha_ingreso", "resolucion_final",
+    }
     cambios_dict = cambios.model_dump(exclude_unset=True)
     for campo, valor_nuevo in cambios_dict.items():
         if campo not in CAMPOS_AUDITABLES:
@@ -566,19 +579,7 @@ def editar_tramite(
 
     db.commit()
     db.refresh(tramite)
-    return schemas.TramiteEmpresaOut(
-        id=tramite.id,
-        tramite_nombre=tramite.tipo_tramite.nombre,
-        categoria=tramite.tipo_tramite.categoria,
-        numero_expediente=tramite.numero_expediente,
-        fecha_inicio=tramite.fecha_inicio,
-        creado_por_nombre=tramite.creado_por.nombre if tramite.creado_por else None,
-        asignado_a=tramite.asignado_a,
-        asignado_a_nombre=tramite.asignado_a_usuario.nombre if tramite.asignado_a_usuario else None,
-        fecha_vencimiento=tramite.fecha_vencimiento,
-        estado=tramite.estado,
-        checklist=tramite.checklist or [],
-    )
+    return construir_tramite_out(tramite)
 
 
 @app.get("/empresas/{empresa_id}/auditoria", response_model=List[schemas.AuditoriaOut])
@@ -637,6 +638,96 @@ def historial_tramite(
         )
         for e in entradas
     ]
+
+
+@app.post("/tramites/{tramite_id}/reparos", response_model=schemas.TramiteEmpresaOut)
+def crear_reparo(
+    tramite_id: UUID,
+    datos: schemas.ReparoCreate,
+    db: Session = Depends(get_db),
+    current_user: models.Usuario = Depends(auth.get_current_user),
+):
+    tramite = (
+        db.query(models.Tramite)
+        .options(*TRAMITE_JOINS)
+        .filter(models.Tramite.id == tramite_id)
+        .first()
+    )
+    if not tramite:
+        raise HTTPException(status_code=404, detail="Trámite no encontrado")
+    verificar_acceso_empresa(db, current_user, tramite.empresa_cliente_id)
+
+    if datos.numero < 1 or datos.numero > 3:
+        raise HTTPException(status_code=400, detail="El número de reparo debe ser 1, 2 o 3")
+    if any(r.numero == datos.numero for r in tramite.reparos):
+        raise HTTPException(status_code=400, detail=f"Ya existe el reparo N° {datos.numero} para este trámite")
+
+    nuevo = models.Reparo(tramite_id=tramite.id, **datos.model_dump())
+    db.add(nuevo)
+
+    db.add(models.AuditoriaTramite(
+        tramite_id=tramite.id,
+        empresa_id=tramite.empresa_cliente_id,
+        empresa_nombre=tramite.empresa_cliente.nombre,
+        tramite_nombre=tramite.tipo_tramite.nombre,
+        usuario_id=current_user.id,
+        campo=f"reparo_{datos.numero}",
+        valor_anterior=None,
+        valor_nuevo=f"Reparo N° {datos.numero} registrado",
+    ))
+
+    db.commit()
+    db.refresh(tramite)
+    return construir_tramite_out(tramite)
+
+
+@app.patch("/reparos/{reparo_id}", response_model=schemas.TramiteEmpresaOut)
+def editar_reparo(
+    reparo_id: UUID,
+    cambios: schemas.ReparoUpdate,
+    db: Session = Depends(get_db),
+    current_user: models.Usuario = Depends(auth.get_current_user),
+):
+    reparo = db.query(models.Reparo).filter(models.Reparo.id == reparo_id).first()
+    if not reparo:
+        raise HTTPException(status_code=404, detail="Reparo no encontrado")
+
+    tramite = (
+        db.query(models.Tramite)
+        .options(*TRAMITE_JOINS)
+        .filter(models.Tramite.id == reparo.tramite_id)
+        .first()
+    )
+    verificar_acceso_empresa(db, current_user, tramite.empresa_cliente_id)
+
+    for campo, valor in cambios.model_dump(exclude_unset=True).items():
+        setattr(reparo, campo, valor)
+
+    db.commit()
+    db.refresh(tramite)
+    return construir_tramite_out(tramite)
+
+
+@app.delete("/reparos/{reparo_id}", response_model=schemas.TramiteEmpresaOut)
+def borrar_reparo(
+    reparo_id: UUID,
+    db: Session = Depends(get_db),
+    current_user: models.Usuario = Depends(auth.require_admin),
+):
+    reparo = db.query(models.Reparo).filter(models.Reparo.id == reparo_id).first()
+    if not reparo:
+        raise HTTPException(status_code=404, detail="Reparo no encontrado")
+
+    tramite = (
+        db.query(models.Tramite)
+        .options(*TRAMITE_JOINS)
+        .filter(models.Tramite.id == reparo.tramite_id)
+        .first()
+    )
+    db.delete(reparo)
+    db.commit()
+    db.refresh(tramite)
+    return construir_tramite_out(tramite)
 
 
 @app.delete("/tramites/{tramite_id}", status_code=204)

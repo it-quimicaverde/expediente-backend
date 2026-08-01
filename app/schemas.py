@@ -144,6 +144,31 @@ class AuditoriaOut(BaseModel):
     tramite_nombre: Optional[str] = None
 
 
+class ReparoBase(BaseModel):
+    fecha_emision: Optional[date] = None
+    motivo_rechazo: Optional[str] = None
+    fecha_vencimiento: Optional[date] = None
+    fecha_paso_firma_respuesta: Optional[date] = None
+    fecha_salida_mensajeria_respuesta: Optional[date] = None
+    fecha_ingreso_respuesta: Optional[date] = None
+
+
+class ReparoCreate(ReparoBase):
+    numero: int
+
+
+class ReparoUpdate(ReparoBase):
+    pass
+
+
+class ReparoOut(ReparoBase):
+    id: UUID
+    numero: int
+
+    class Config:
+        from_attributes = True
+
+
 class TramiteUpdate(BaseModel):
     numero_expediente: Optional[str] = None
     fecha_inicio: Optional[date] = None
@@ -152,6 +177,10 @@ class TramiteUpdate(BaseModel):
     notas: Optional[str] = None
     checklist: Optional[List[dict]] = None
     asignado_a: Optional[UUID] = None
+    fecha_paso_firma: Optional[date] = None
+    fecha_salida_mensajeria: Optional[date] = None
+    fecha_ingreso: Optional[date] = None
+    resolucion_final: Optional[str] = None
 
 
 class TramiteEmpresaOut(BaseModel):
@@ -166,3 +195,8 @@ class TramiteEmpresaOut(BaseModel):
     creado_por_nombre: Optional[str] = None
     asignado_a: Optional[UUID] = None
     asignado_a_nombre: Optional[str] = None
+    fecha_paso_firma: Optional[date] = None
+    fecha_salida_mensajeria: Optional[date] = None
+    fecha_ingreso: Optional[date] = None
+    resolucion_final: Optional[str] = None
+    reparos: List[ReparoOut] = []

@@ -77,6 +77,13 @@ class Tramite(Base):
     estado = Column(String(20), default="en_tramite")
     checklist = Column(JSON, default=list)
     notas = Column(Text)
+
+    # Flujo interno de gestión (aplica sobre todo a Alimentos, Farma, Otros)
+    fecha_paso_firma = Column(Date, nullable=True)          # se lleva a firma con la jefatura
+    fecha_salida_mensajeria = Column(Date, nullable=True)   # sale hacia el ministerio
+    fecha_ingreso = Column(Date, nullable=True)              # el ministerio lo recibe/registra
+    resolucion_final = Column(String(20), nullable=True)     # aprobado | baja | finalizado | pendiente
+
     creado_en = Column(DateTime(timezone=True), default=datetime.utcnow)
     actualizado_en = Column(DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow)
 
@@ -84,6 +91,26 @@ class Tramite(Base):
     tipo_tramite = relationship("TipoTramite")
     creado_por = relationship("Usuario", foreign_keys=[creado_por_id])
     asignado_a_usuario = relationship("Usuario", foreign_keys=[asignado_a])
+    reparos = relationship("Reparo", back_populates="tramite", order_by="Reparo.numero", cascade="all, delete-orphan")
+
+
+class Reparo(Base):
+    __tablename__ = "reparo"
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tramite_id = Column(UUID(as_uuid=True), ForeignKey("tramite.id", ondelete="CASCADE"), nullable=False)
+    numero = Column(Integer, nullable=False)  # 1, 2 o 3
+
+    fecha_emision = Column(Date, nullable=True)
+    motivo_rechazo = Column(Text, nullable=True)
+    fecha_vencimiento = Column(Date, nullable=True)  # plazo para responder — aquí aplican las alertas 89/60/30/10
+
+    fecha_paso_firma_respuesta = Column(Date, nullable=True)
+    fecha_salida_mensajeria_respuesta = Column(Date, nullable=True)
+    fecha_ingreso_respuesta = Column(Date, nullable=True)
+
+    creado_en = Column(DateTime(timezone=True), default=datetime.utcnow)
+
+    tramite = relationship("Tramite", back_populates="reparos")
 
 
 class UsuarioEmpresaCliente(Base):
@@ -112,6 +139,7 @@ class Alerta(Base):
     __tablename__ = "alerta"
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     tramite_id = Column(UUID(as_uuid=True), ForeignKey("tramite.id"), nullable=False)
+    reparo_id = Column(UUID(as_uuid=True), ForeignKey("reparo.id", ondelete="CASCADE"), nullable=True)
     dias_previos = Column(Integer, nullable=False)
     fecha_programada = Column(Date, nullable=False)
     enviada = Column(Boolean, default=False)
