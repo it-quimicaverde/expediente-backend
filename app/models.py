@@ -57,6 +57,7 @@ class TipoTramite(Base):
     nombre = Column(String(250), nullable=False)
     institucion = Column(String(100))
     tipo_gestion = Column(String(100))
+    tipo_instrumento = Column(String(10), nullable=True)  # EAI | DABI | EIA | DA | FAR | FACR (solo Ambiente)
     vigencia_meses = Column(Integer, nullable=True)
     es_recurrente = Column(Boolean, default=False)
     frecuencia_dias = Column(Integer, nullable=True)

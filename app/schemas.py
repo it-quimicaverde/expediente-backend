@@ -64,6 +64,7 @@ class TipoTramiteOut(BaseModel):
     nombre: str
     institucion: Optional[str]
     tipo_gestion: Optional[str]
+    tipo_instrumento: Optional[str] = None
     vigencia_meses: Optional[int]
     es_recurrente: bool
     checklist_default: List[str] = []
