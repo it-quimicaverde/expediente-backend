@@ -181,6 +181,10 @@ class TramiteUpdate(BaseModel):
     fecha_salida_mensajeria: Optional[date] = None
     fecha_ingreso: Optional[date] = None
     resolucion_final: Optional[str] = None
+    fecha_ingreso_instrumento: Optional[date] = None
+    fecha_resolucion_aprobatoria: Optional[date] = None
+    fecha_presentacion_solicitud: Optional[date] = None
+    fecha_retiro_licencia: Optional[date] = None
 
 
 class TramiteEmpresaOut(BaseModel):
@@ -199,4 +203,8 @@ class TramiteEmpresaOut(BaseModel):
     fecha_salida_mensajeria: Optional[date] = None
     fecha_ingreso: Optional[date] = None
     resolucion_final: Optional[str] = None
+    fecha_ingreso_instrumento: Optional[date] = None
+    fecha_resolucion_aprobatoria: Optional[date] = None
+    fecha_presentacion_solicitud: Optional[date] = None
+    fecha_retiro_licencia: Optional[date] = None
     reparos: List[ReparoOut] = []

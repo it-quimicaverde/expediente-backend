@@ -66,6 +66,10 @@ def construir_tramite_out(t: models.Tramite) -> schemas.TramiteEmpresaOut:
         fecha_salida_mensajeria=t.fecha_salida_mensajeria,
         fecha_ingreso=t.fecha_ingreso,
         resolucion_final=t.resolucion_final,
+        fecha_ingreso_instrumento=t.fecha_ingreso_instrumento,
+        fecha_resolucion_aprobatoria=t.fecha_resolucion_aprobatoria,
+        fecha_presentacion_solicitud=t.fecha_presentacion_solicitud,
+        fecha_retiro_licencia=t.fecha_retiro_licencia,
         reparos=[schemas.ReparoOut.model_validate(r) for r in sorted(t.reparos, key=lambda r: r.numero)],
     )
 
@@ -556,6 +560,7 @@ def editar_tramite(
     CAMPOS_AUDITABLES = {
         "numero_expediente", "fecha_inicio", "fecha_vencimiento", "estado", "asignado_a", "notas",
         "fecha_paso_firma", "fecha_salida_mensajeria", "fecha_ingreso", "resolucion_final",
+        "fecha_ingreso_instrumento", "fecha_resolucion_aprobatoria", "fecha_presentacion_solicitud", "fecha_retiro_licencia",
     }
     cambios_dict = cambios.model_dump(exclude_unset=True)
     for campo, valor_nuevo in cambios_dict.items():

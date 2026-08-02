@@ -84,6 +84,13 @@ class Tramite(Base):
     fecha_ingreso = Column(Date, nullable=True)              # el ministerio lo recibe/registra
     resolucion_final = Column(String(20), nullable=True)     # aprobado | baja | finalizado | pendiente
 
+    # Flujo propio de Ambiente (licencias/instrumentos ante el MARN)
+    fecha_ingreso_instrumento = Column(Date, nullable=True)       # ingreso del instrumento a MARN
+    fecha_resolucion_aprobatoria = Column(Date, nullable=True)    # resolución aprobatoria del instrumento
+    fecha_presentacion_solicitud = Column(Date, nullable=True)    # presentación de solicitud de licencia
+    fecha_retiro_licencia = Column(Date, nullable=True)           # retiro de licencia ambiental
+    # (el vencimiento de la licencia usa el fecha_vencimiento general que ya existe)
+
     creado_en = Column(DateTime(timezone=True), default=datetime.utcnow)
     actualizado_en = Column(DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow)
 
