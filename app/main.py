@@ -56,6 +56,49 @@ def _url_descarga_segura(clave: str) -> str | None:
         return None
 
 
+CATEGORIAS_CON_REPARO = {"alimentos", "farma", "otros"}
+
+
+def calcular_estatus(t: models.Tramite) -> str | None:
+    categoria = t.tipo_tramite.categoria
+
+    if categoria == "ambiente":
+        if t.fecha_retiro_licencia:
+            return "FINALIZADO"
+        if t.fecha_presentacion_solicitud:
+            return "SOLICITUD DE LICENCIA EN TRÁMITE"
+        if t.fecha_resolucion_aprobatoria:
+            return "RESOLUCIÓN APROBADA"
+        if t.fecha_ingreso_instrumento:
+            return "EN DICTAMEN"
+        return "EN PREPARACIÓN"
+
+    if categoria in CATEGORIAS_CON_REPARO:
+        if t.resolucion_final == "baja":
+            return "RECHAZADO"
+        if t.resolucion_final == "aprobado":
+            return "APROBADO"
+        if t.resolucion_final == "finalizado":
+            return "FINALIZADO"
+
+        reparos_ordenados = sorted(t.reparos, key=lambda r: r.numero) if t.reparos else []
+        if reparos_ordenados:
+            ultimo = reparos_ordenados[-1]
+            if not ultimo.fecha_ingreso_respuesta:
+                return f"REPARO N° {ultimo.numero} PENDIENTE"
+            return "RESPUESTA EN REVISIÓN"
+
+        if t.fecha_ingreso:
+            return "EN ANÁLISIS"
+        if t.fecha_salida_mensajeria:
+            return "EN CAMINO AL MINISTERIO"
+        if t.fecha_paso_firma:
+            return "EN FIRMA"
+        return "EN PREPARACIÓN"
+
+    return None  # SSO u otras: se queda con el campo "estado" manual de siempre
+
+
 def construir_tramite_out(t: models.Tramite) -> schemas.TramiteEmpresaOut:
     return schemas.TramiteEmpresaOut(
         id=t.id,
@@ -73,6 +116,7 @@ def construir_tramite_out(t: models.Tramite) -> schemas.TramiteEmpresaOut:
         fecha_salida_mensajeria=t.fecha_salida_mensajeria,
         fecha_ingreso=t.fecha_ingreso,
         resolucion_final=t.resolucion_final,
+        fecha_aprobacion=t.fecha_aprobacion,
         fecha_ingreso_instrumento=t.fecha_ingreso_instrumento,
         fecha_resolucion_aprobatoria=t.fecha_resolucion_aprobatoria,
         fecha_presentacion_solicitud=t.fecha_presentacion_solicitud,
@@ -95,6 +139,7 @@ def construir_tramite_out(t: models.Tramite) -> schemas.TramiteEmpresaOut:
             for d in t.documentos
         ],
         reparos=[schemas.ReparoOut.model_validate(r) for r in sorted(t.reparos, key=lambda r: r.numero)],
+        estatus_calculado=calcular_estatus(t),
     )
 
 
@@ -434,6 +479,7 @@ def buscar_tramites(
             joinedload(models.Tramite.tipo_tramite),
             joinedload(models.Tramite.creado_por),
             joinedload(models.Tramite.asignado_a_usuario),
+            joinedload(models.Tramite.reparos),
         )
         .filter(models.Tramite.numero_expediente.ilike(f"%{q}%"))
     )
@@ -454,6 +500,7 @@ def buscar_tramites(
             estado=t.estado,
             creado_por_nombre=t.creado_por.nombre if t.creado_por else None,
             asignado_a_nombre=t.asignado_a_usuario.nombre if t.asignado_a_usuario else None,
+            estatus_calculado=calcular_estatus(t),
         )
         for t in tramites
     ]
@@ -494,6 +541,7 @@ def proximos_a_vencer(
             joinedload(models.Tramite.tipo_tramite),
             joinedload(models.Tramite.creado_por),
             joinedload(models.Tramite.asignado_a_usuario),
+            joinedload(models.Tramite.reparos),
         )
         .filter(models.Tramite.fecha_vencimiento.isnot(None))
         .filter(models.Tramite.fecha_vencimiento <= limite)
@@ -516,6 +564,7 @@ def proximos_a_vencer(
             numero_expediente=t.numero_expediente,
             fecha_vencimiento=t.fecha_vencimiento,
             estado=t.estado,
+            estatus_calculado=calcular_estatus(t),
             creado_por_nombre=t.creado_por.nombre if t.creado_por else None,
             asignado_a_nombre=t.asignado_a_usuario.nombre if t.asignado_a_usuario else None,
         )
@@ -587,7 +636,7 @@ def editar_tramite(
 
     CAMPOS_AUDITABLES = {
         "numero_expediente", "fecha_inicio", "fecha_vencimiento", "estado", "asignado_a", "notas",
-        "fecha_paso_firma", "fecha_salida_mensajeria", "fecha_ingreso", "resolucion_final",
+        "fecha_paso_firma", "fecha_salida_mensajeria", "fecha_ingreso", "resolucion_final", "fecha_aprobacion",
         "fecha_ingreso_instrumento", "fecha_resolucion_aprobatoria", "fecha_presentacion_solicitud", "fecha_retiro_licencia",
         "anticipo", "complemento", "fecha_emision_licencia", "anios_licencia",
     }
@@ -599,6 +648,12 @@ def editar_tramite(
         nuevos_anios = cambios_dict.get("anios_licencia", tramite.anios_licencia)
         if nueva_emision and nuevos_anios:
             cambios_dict["fecha_vencimiento"] = nueva_emision + relativedelta(years=nuevos_anios)
+
+    # Alimentos/Farma/Otros: la vigencia empieza a contar desde que se aprueba, no desde el inicio
+    if ("fecha_aprobacion" in cambios_dict or cambios_dict.get("resolucion_final") == "aprobado") and not cambios_dict.get("fecha_vencimiento"):
+        nueva_aprobacion = cambios_dict.get("fecha_aprobacion", tramite.fecha_aprobacion)
+        if nueva_aprobacion and tramite.tipo_tramite.vigencia_meses:
+            cambios_dict["fecha_vencimiento"] = nueva_aprobacion + relativedelta(months=tramite.tipo_tramite.vigencia_meses)
 
     for campo, valor_nuevo in cambios_dict.items():
         if campo not in CAMPOS_AUDITABLES:

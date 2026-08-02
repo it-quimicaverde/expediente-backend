@@ -84,6 +84,7 @@ class Tramite(Base):
     fecha_salida_mensajeria = Column(Date, nullable=True)   # sale hacia el ministerio
     fecha_ingreso = Column(Date, nullable=True)              # el ministerio lo recibe/registra
     resolucion_final = Column(String(20), nullable=True)     # aprobado | baja | finalizado | pendiente
+    fecha_aprobacion = Column(Date, nullable=True)            # fecha real de aprobación del ministerio; la vigencia cuenta desde aquí
 
     # Flujo propio de Ambiente (licencias/instrumentos ante el MARN)
     fecha_ingreso_instrumento = Column(Date, nullable=True)       # ingreso del instrumento a MARN

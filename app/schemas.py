@@ -126,6 +126,7 @@ class TramiteDashboardOut(BaseModel):
     estado: str
     creado_por_nombre: Optional[str] = None
     asignado_a_nombre: Optional[str] = None
+    estatus_calculado: Optional[str] = None
 
 
 class ImportacionError(BaseModel):
@@ -197,6 +198,7 @@ class TramiteUpdate(BaseModel):
     fecha_salida_mensajeria: Optional[date] = None
     fecha_ingreso: Optional[date] = None
     resolucion_final: Optional[str] = None
+    fecha_aprobacion: Optional[date] = None
     fecha_ingreso_instrumento: Optional[date] = None
     fecha_resolucion_aprobatoria: Optional[date] = None
     fecha_presentacion_solicitud: Optional[date] = None
@@ -223,6 +225,7 @@ class TramiteEmpresaOut(BaseModel):
     fecha_salida_mensajeria: Optional[date] = None
     fecha_ingreso: Optional[date] = None
     resolucion_final: Optional[str] = None
+    fecha_aprobacion: Optional[date] = None
     fecha_ingreso_instrumento: Optional[date] = None
     fecha_resolucion_aprobatoria: Optional[date] = None
     fecha_presentacion_solicitud: Optional[date] = None
@@ -233,3 +236,4 @@ class TramiteEmpresaOut(BaseModel):
     anios_licencia: Optional[int] = None
     documentos: List[DocumentoOut] = []
     reparos: List[ReparoOut] = []
+    estatus_calculado: Optional[str] = None
