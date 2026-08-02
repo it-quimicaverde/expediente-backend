@@ -92,6 +92,10 @@ class Tramite(Base):
     fecha_retiro_licencia = Column(Date, nullable=True)           # retiro de licencia ambiental
     # (el vencimiento de la licencia usa el fecha_vencimiento general que ya existe)
 
+    # Seguimiento de pagos (aplica a cualquier categoría)
+    anticipo = Column(Text, nullable=True)
+    complemento = Column(Text, nullable=True)
+
     creado_en = Column(DateTime(timezone=True), default=datetime.utcnow)
     actualizado_en = Column(DateTime(timezone=True), default=datetime.utcnow, onupdate=datetime.utcnow)
 

@@ -43,6 +43,8 @@ class TramiteBase(BaseModel):
     fecha_vencimiento: Optional[date] = None
     estado: str = "en_tramite"
     notas: Optional[str] = None
+    anticipo: Optional[str] = None
+    complemento: Optional[str] = None
 
 
 class TramiteCreate(TramiteBase):
@@ -186,6 +188,8 @@ class TramiteUpdate(BaseModel):
     fecha_resolucion_aprobatoria: Optional[date] = None
     fecha_presentacion_solicitud: Optional[date] = None
     fecha_retiro_licencia: Optional[date] = None
+    anticipo: Optional[str] = None
+    complemento: Optional[str] = None
 
 
 class TramiteEmpresaOut(BaseModel):
@@ -208,4 +212,6 @@ class TramiteEmpresaOut(BaseModel):
     fecha_resolucion_aprobatoria: Optional[date] = None
     fecha_presentacion_solicitud: Optional[date] = None
     fecha_retiro_licencia: Optional[date] = None
+    anticipo: Optional[str] = None
+    complemento: Optional[str] = None
     reparos: List[ReparoOut] = []
