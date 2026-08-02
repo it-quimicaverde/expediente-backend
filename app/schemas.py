@@ -140,6 +140,17 @@ class ImportacionResultado(BaseModel):
     errores: List[ImportacionError]
 
 
+class DocumentoOut(BaseModel):
+    id: UUID
+    tipo: str
+    nombre_archivo: str
+    tamano_bytes: Optional[int] = None
+    subido_por_nombre: Optional[str] = None
+    creado_en: datetime
+    url_descarga: Optional[str] = None
+    reparo_id: Optional[UUID] = None
+
+
 class AuditoriaOut(BaseModel):
     campo: str
     valor_anterior: Optional[str] = None
@@ -220,4 +231,5 @@ class TramiteEmpresaOut(BaseModel):
     complemento: Optional[str] = None
     fecha_emision_licencia: Optional[date] = None
     anios_licencia: Optional[int] = None
+    documentos: List[DocumentoOut] = []
     reparos: List[ReparoOut] = []

@@ -106,6 +106,7 @@ class Tramite(Base):
     creado_por = relationship("Usuario", foreign_keys=[creado_por_id])
     asignado_a_usuario = relationship("Usuario", foreign_keys=[asignado_a])
     reparos = relationship("Reparo", back_populates="tramite", order_by="Reparo.numero", cascade="all, delete-orphan")
+    documentos = relationship("Documento", order_by="Documento.creado_en.desc()", cascade="all, delete-orphan")
 
 
 class Reparo(Base):
@@ -131,6 +132,21 @@ class UsuarioEmpresaCliente(Base):
     __tablename__ = "usuario_empresa_cliente"
     usuario_id = Column(UUID(as_uuid=True), ForeignKey("usuario.id"), primary_key=True)
     empresa_cliente_id = Column(UUID(as_uuid=True), ForeignKey("empresa_cliente.id"), primary_key=True)
+
+
+class Documento(Base):
+    __tablename__ = "documento"
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tramite_id = Column(UUID(as_uuid=True), ForeignKey("tramite.id", ondelete="CASCADE"), nullable=False)
+    reparo_id = Column(UUID(as_uuid=True), ForeignKey("reparo.id", ondelete="CASCADE"), nullable=True)
+    tipo = Column(String(30), nullable=False)  # contrasena | licencia | nota_reparo | otro
+    nombre_archivo = Column(Text, nullable=False)
+    clave_almacenamiento = Column(Text, nullable=False)
+    tamano_bytes = Column(Integer, nullable=True)
+    subido_por_id = Column(UUID(as_uuid=True), ForeignKey("usuario.id"), nullable=True)
+    creado_en = Column(DateTime(timezone=True), default=datetime.utcnow)
+
+    subido_por = relationship("Usuario")
 
 
 class AuditoriaTramite(Base):

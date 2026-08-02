@@ -12,7 +12,7 @@ from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import asc
 
-from . import models, schemas, auth
+from . import models, schemas, auth, storage
 from .database import engine, get_db, Base
 from .alertas_job import ejecutar_revision_alertas
 
@@ -49,6 +49,13 @@ def verificar_acceso_empresa(db: Session, current_user: models.Usuario, empresa_
         raise HTTPException(status_code=403, detail="No tienes esta empresa asignada")
 
 
+def _url_descarga_segura(clave: str) -> str | None:
+    try:
+        return storage.generar_url_descarga(clave)
+    except Exception:
+        return None
+
+
 def construir_tramite_out(t: models.Tramite) -> schemas.TramiteEmpresaOut:
     return schemas.TramiteEmpresaOut(
         id=t.id,
@@ -74,6 +81,19 @@ def construir_tramite_out(t: models.Tramite) -> schemas.TramiteEmpresaOut:
         complemento=t.complemento,
         fecha_emision_licencia=t.fecha_emision_licencia,
         anios_licencia=t.anios_licencia,
+        documentos=[
+            schemas.DocumentoOut(
+                id=d.id,
+                tipo=d.tipo,
+                nombre_archivo=d.nombre_archivo,
+                tamano_bytes=d.tamano_bytes,
+                subido_por_nombre=d.subido_por.nombre if d.subido_por else None,
+                creado_en=d.creado_en,
+                url_descarga=_url_descarga_segura(d.clave_almacenamiento),
+                reparo_id=d.reparo_id,
+            )
+            for d in t.documentos
+        ],
         reparos=[schemas.ReparoOut.model_validate(r) for r in sorted(t.reparos, key=lambda r: r.numero)],
     )
 
@@ -84,6 +104,7 @@ TRAMITE_JOINS = (
     joinedload(models.Tramite.asignado_a_usuario),
     joinedload(models.Tramite.empresa_cliente),
     joinedload(models.Tramite.reparos),
+    joinedload(models.Tramite.documentos).joinedload(models.Documento.subido_por),
 )
 
 
@@ -754,6 +775,81 @@ def borrar_reparo(
         .first()
     )
     db.delete(reparo)
+    db.commit()
+    db.refresh(tramite)
+    return construir_tramite_out(tramite)
+
+
+@app.post("/tramites/{tramite_id}/documentos", response_model=schemas.TramiteEmpresaOut)
+def subir_documento(
+    tramite_id: UUID,
+    tipo: str,
+    archivo: UploadFile = File(...),
+    reparo_id: str = "",
+    db: Session = Depends(get_db),
+    current_user: models.Usuario = Depends(auth.get_current_user),
+):
+    if tipo not in ("contrasena", "licencia", "nota_reparo", "otro"):
+        raise HTTPException(status_code=400, detail="Tipo de documento inválido")
+
+    tramite = (
+        db.query(models.Tramite)
+        .options(*TRAMITE_JOINS)
+        .filter(models.Tramite.id == tramite_id)
+        .first()
+    )
+    if not tramite:
+        raise HTTPException(status_code=404, detail="Trámite no encontrado")
+    verificar_acceso_empresa(db, current_user, tramite.empresa_cliente_id)
+
+    contenido = archivo.file.read()
+    error = storage.validar_archivo(archivo.filename, len(contenido))
+    if error:
+        raise HTTPException(status_code=400, detail=error)
+
+    try:
+        clave = storage.subir_archivo(contenido, archivo.filename, archivo.content_type)
+    except RuntimeError as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+    nuevo = models.Documento(
+        tramite_id=tramite.id,
+        reparo_id=UUID(reparo_id) if reparo_id else None,
+        tipo=tipo,
+        nombre_archivo=archivo.filename,
+        clave_almacenamiento=clave,
+        tamano_bytes=len(contenido),
+        subido_por_id=current_user.id,
+    )
+    db.add(nuevo)
+    db.commit()
+    db.refresh(tramite)
+    return construir_tramite_out(tramite)
+
+
+@app.delete("/documentos/{documento_id}", response_model=schemas.TramiteEmpresaOut)
+def borrar_documento(
+    documento_id: UUID,
+    db: Session = Depends(get_db),
+    current_user: models.Usuario = Depends(auth.require_admin),
+):
+    documento = db.query(models.Documento).filter(models.Documento.id == documento_id).first()
+    if not documento:
+        raise HTTPException(status_code=404, detail="Documento no encontrado")
+
+    tramite = (
+        db.query(models.Tramite)
+        .options(*TRAMITE_JOINS)
+        .filter(models.Tramite.id == documento.tramite_id)
+        .first()
+    )
+
+    try:
+        storage.borrar_archivo(documento.clave_almacenamiento)
+    except Exception:
+        pass  # si falla borrar del almacenamiento, igual quitamos el registro
+
+    db.delete(documento)
     db.commit()
     db.refresh(tramite)
     return construir_tramite_out(tramite)
