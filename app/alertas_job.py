@@ -1,3 +1,5 @@
+import os
+
 from datetime import date, datetime
 
 from sqlalchemy.orm import Session, joinedload
@@ -15,6 +17,10 @@ UMBRALES_TRAMITE = [60, 30, 15]
 UMBRALES_REPARO = [90, 60, 30, 10]
 CATEGORIAS_CON_REPARO = {"alimentos", "farma", "otros"}
 
+# Todas las alertas van a un único correo (no se reparten por gestor asignado),
+# porque es el que revisa todo el equipo.
+CORREO_UNICO_ALERTAS = os.getenv("CORREO_UNICO_ALERTAS", "")
+
 
 def banda_para(dias_restantes: int, umbrales: list) -> int | None:
     """Devuelve a qué umbral pertenece dias_restantes, o None si está fuera de rango."""
@@ -29,18 +35,11 @@ def banda_para(dias_restantes: int, umbrales: list) -> int | None:
 
 
 def destinatarios_para_empresa(db: Session, empresa_id) -> list:
-    """Correos de los gestores asignados a la empresa; si no hay ninguno, los admins."""
-    gestores = (
-        db.query(models.Usuario.email)
-        .join(models.UsuarioEmpresaCliente, models.UsuarioEmpresaCliente.usuario_id == models.Usuario.id)
-        .filter(models.UsuarioEmpresaCliente.empresa_cliente_id == empresa_id)
-        .filter(models.Usuario.activo.is_(True))
-        .all()
-    )
-    correos = [g[0] for g in gestores]
-    if correos:
-        return correos
+    """Todas las alertas van a un único correo fijo (no se reparten por gestor asignado)."""
+    if CORREO_UNICO_ALERTAS:
+        return [CORREO_UNICO_ALERTAS]
 
+    # Respaldo por si no se configuró la variable de entorno: manda a los admins.
     admins = db.query(models.Usuario.email).filter(models.Usuario.rol == "admin").filter(models.Usuario.activo.is_(True)).all()
     return [a[0] for a in admins]
 
