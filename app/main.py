@@ -72,6 +72,8 @@ def construir_tramite_out(t: models.Tramite) -> schemas.TramiteEmpresaOut:
         fecha_retiro_licencia=t.fecha_retiro_licencia,
         anticipo=t.anticipo,
         complemento=t.complemento,
+        fecha_emision_licencia=t.fecha_emision_licencia,
+        anios_licencia=t.anios_licencia,
         reparos=[schemas.ReparoOut.model_validate(r) for r in sorted(t.reparos, key=lambda r: r.numero)],
     )
 
@@ -514,7 +516,10 @@ def crear_tramite(
 
     # Autocompleta fecha de vencimiento y checklist según el catálogo
     data = tramite.model_dump()
-    if tipo.vigencia_meses and not data.get("fecha_vencimiento"):
+    if data.get("fecha_emision_licencia") and data.get("anios_licencia") and not data.get("fecha_vencimiento"):
+        # Ambiente: el vencimiento depende de cuántos años pagó el cliente, no de un valor fijo
+        data["fecha_vencimiento"] = data["fecha_emision_licencia"] + relativedelta(years=data["anios_licencia"])
+    elif tipo.vigencia_meses and not data.get("fecha_vencimiento"):
         data["fecha_vencimiento"] = data["fecha_inicio"] + relativedelta(months=tipo.vigencia_meses)
 
     nuevo = models.Tramite(**data)
@@ -563,9 +568,17 @@ def editar_tramite(
         "numero_expediente", "fecha_inicio", "fecha_vencimiento", "estado", "asignado_a", "notas",
         "fecha_paso_firma", "fecha_salida_mensajeria", "fecha_ingreso", "resolucion_final",
         "fecha_ingreso_instrumento", "fecha_resolucion_aprobatoria", "fecha_presentacion_solicitud", "fecha_retiro_licencia",
-        "anticipo", "complemento",
+        "anticipo", "complemento", "fecha_emision_licencia", "anios_licencia",
     }
     cambios_dict = cambios.model_dump(exclude_unset=True)
+
+    # Ambiente: si cambian emisión o años y no se dio un vencimiento explícito, recalcula
+    if ("fecha_emision_licencia" in cambios_dict or "anios_licencia" in cambios_dict) and not cambios_dict.get("fecha_vencimiento"):
+        nueva_emision = cambios_dict.get("fecha_emision_licencia", tramite.fecha_emision_licencia)
+        nuevos_anios = cambios_dict.get("anios_licencia", tramite.anios_licencia)
+        if nueva_emision and nuevos_anios:
+            cambios_dict["fecha_vencimiento"] = nueva_emision + relativedelta(years=nuevos_anios)
+
     for campo, valor_nuevo in cambios_dict.items():
         if campo not in CAMPOS_AUDITABLES:
             continue

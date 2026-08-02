@@ -45,6 +45,8 @@ class TramiteBase(BaseModel):
     notas: Optional[str] = None
     anticipo: Optional[str] = None
     complemento: Optional[str] = None
+    fecha_emision_licencia: Optional[date] = None
+    anios_licencia: Optional[int] = None
 
 
 class TramiteCreate(TramiteBase):
@@ -190,6 +192,8 @@ class TramiteUpdate(BaseModel):
     fecha_retiro_licencia: Optional[date] = None
     anticipo: Optional[str] = None
     complemento: Optional[str] = None
+    fecha_emision_licencia: Optional[date] = None
+    anios_licencia: Optional[int] = None
 
 
 class TramiteEmpresaOut(BaseModel):
@@ -214,4 +218,6 @@ class TramiteEmpresaOut(BaseModel):
     fecha_retiro_licencia: Optional[date] = None
     anticipo: Optional[str] = None
     complemento: Optional[str] = None
+    fecha_emision_licencia: Optional[date] = None
+    anios_licencia: Optional[int] = None
     reparos: List[ReparoOut] = []

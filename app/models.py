@@ -90,6 +90,8 @@ class Tramite(Base):
     fecha_resolucion_aprobatoria = Column(Date, nullable=True)    # resolución aprobatoria del instrumento
     fecha_presentacion_solicitud = Column(Date, nullable=True)    # presentación de solicitud de licencia
     fecha_retiro_licencia = Column(Date, nullable=True)           # retiro de licencia ambiental
+    fecha_emision_licencia = Column(Date, nullable=True)          # fecha de emisión de la licencia ambiental
+    anios_licencia = Column(Integer, nullable=True)                # años pagados; decide el usuario caso por caso
     # (el vencimiento de la licencia usa el fecha_vencimiento general que ya existe)
 
     # Seguimiento de pagos (aplica a cualquier categoría)
