@@ -504,6 +504,7 @@ def buscar_tramites(
             creado_por_nombre=t.creado_por.nombre if t.creado_por else None,
             asignado_a_nombre=t.asignado_a_usuario.nombre if t.asignado_a_usuario else None,
             estatus_calculado=calcular_estatus(t),
+            creado_en=t.creado_en,
         )
         for t in tramites
     ]
@@ -531,23 +532,18 @@ def resumen_dashboard(
 
 @app.get("/dashboard/proximos-vencer", response_model=List[schemas.TramiteDashboardOut])
 def proximos_a_vencer(
-    dias: int = 30,
     gestor_id: str = "",
     db: Session = Depends(get_db),
     current_user: models.Usuario = Depends(auth.get_current_user),
 ):
-    limite = date.today() + timedelta(days=dias)
-    query = (
-        db.query(models.Tramite)
-        .options(
-            joinedload(models.Tramite.empresa_cliente),
-            joinedload(models.Tramite.tipo_tramite),
-            joinedload(models.Tramite.creado_por),
-            joinedload(models.Tramite.asignado_a_usuario),
-            joinedload(models.Tramite.reparos),
-        )
-        .filter(models.Tramite.fecha_vencimiento.isnot(None))
-        .filter(models.Tramite.fecha_vencimiento <= limite)
+    # Trae TODOS los trámites (con o sin vencimiento todavía) — el filtro de días
+    # ahora se aplica del lado del frontend, sobre esta misma lista completa.
+    query = db.query(models.Tramite).options(
+        joinedload(models.Tramite.empresa_cliente),
+        joinedload(models.Tramite.tipo_tramite),
+        joinedload(models.Tramite.creado_por),
+        joinedload(models.Tramite.asignado_a_usuario),
+        joinedload(models.Tramite.reparos),
     )
     if current_user.rol != "admin":
         asignadas = empresas_asignadas_ids(db, current_user.id)
@@ -556,7 +552,15 @@ def proximos_a_vencer(
         asignadas = empresas_asignadas_ids(db, gestor_id)
         query = query.filter(models.Tramite.empresa_cliente_id.in_(asignadas))
 
-    tramites = query.order_by(asc(models.Tramite.fecha_vencimiento)).all()
+    # Los que sí tienen vencimiento van primero (más próximo primero); los que
+    # todavía no tienen (en reparo, pendientes de aprobación) van al final,
+    # ordenados por los más recientes primero.
+    tramites = query.order_by(
+        models.Tramite.fecha_vencimiento.is_(None),
+        asc(models.Tramite.fecha_vencimiento),
+        models.Tramite.creado_en.desc(),
+    ).all()
+
     return [
         schemas.TramiteDashboardOut(
             id=t.id,
@@ -571,6 +575,7 @@ def proximos_a_vencer(
             estatus_calculado=calcular_estatus(t),
             creado_por_nombre=t.creado_por.nombre if t.creado_por else None,
             asignado_a_nombre=t.asignado_a_usuario.nombre if t.asignado_a_usuario else None,
+            creado_en=t.creado_en,
         )
         for t in tramites
     ]
