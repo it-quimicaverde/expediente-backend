@@ -131,6 +131,7 @@ class TramiteDashboardOut(BaseModel):
     asignado_a_nombre: Optional[str] = None
     estatus_calculado: Optional[str] = None
     creado_en: datetime
+    fecha_limite_reparo: Optional[date] = None
 
 
 class ImportacionError(BaseModel):

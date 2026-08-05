@@ -59,6 +59,17 @@ def _url_descarga_segura(clave: str) -> str | None:
 CATEGORIAS_CON_REPARO = {"alimentos", "farma", "otros"}
 
 
+def fecha_limite_reparo_pendiente(t: models.Tramite) -> date | None:
+    """Si hay un reparo esperando respuesta, devuelve su fecha límite (para la cuenta regresiva)."""
+    if t.tipo_tramite.categoria not in CATEGORIAS_CON_REPARO or not t.reparos:
+        return None
+    reparos_ordenados = sorted(t.reparos, key=lambda r: r.numero)
+    ultimo = reparos_ordenados[-1]
+    if not ultimo.fecha_ingreso_respuesta:
+        return ultimo.fecha_vencimiento
+    return None
+
+
 def calcular_estatus(t: models.Tramite) -> str | None:
     categoria = t.tipo_tramite.categoria
 
@@ -505,6 +516,7 @@ def buscar_tramites(
             asignado_a_nombre=t.asignado_a_usuario.nombre if t.asignado_a_usuario else None,
             estatus_calculado=calcular_estatus(t),
             creado_en=t.creado_en,
+            fecha_limite_reparo=fecha_limite_reparo_pendiente(t),
         )
         for t in tramites
     ]
@@ -576,6 +588,7 @@ def proximos_a_vencer(
             creado_por_nombre=t.creado_por.nombre if t.creado_por else None,
             asignado_a_nombre=t.asignado_a_usuario.nombre if t.asignado_a_usuario else None,
             creado_en=t.creado_en,
+            fecha_limite_reparo=fecha_limite_reparo_pendiente(t),
         )
         for t in tramites
     ]
