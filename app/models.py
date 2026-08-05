@@ -93,6 +93,10 @@ class Tramite(Base):
     fecha_retiro_licencia = Column(Date, nullable=True)           # retiro de licencia ambiental
     fecha_emision_licencia = Column(Date, nullable=True)          # fecha de emisión de la licencia ambiental
     anios_licencia = Column(Integer, nullable=True)                # años pagados; decide el usuario caso por caso
+
+    # Sobre todo para Alimentos/Farma: identifica de qué producto se trata
+    nombre_producto = Column(Text, nullable=True)
+    numero_registro = Column(String(100), nullable=True)  # número final de registro/licencia/aprobación (no el de expediente de seguimiento)
     # (el vencimiento de la licencia usa el fecha_vencimiento general que ya existe)
 
     # Seguimiento de pagos (aplica a cualquier categoría)

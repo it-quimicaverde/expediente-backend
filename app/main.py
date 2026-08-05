@@ -125,6 +125,8 @@ def construir_tramite_out(t: models.Tramite) -> schemas.TramiteEmpresaOut:
         complemento=t.complemento,
         fecha_emision_licencia=t.fecha_emision_licencia,
         anios_licencia=t.anios_licencia,
+        nombre_producto=t.nombre_producto,
+        numero_registro=t.numero_registro,
         documentos=[
             schemas.DocumentoOut(
                 id=d.id,
@@ -496,6 +498,7 @@ def buscar_tramites(
             tramite_nombre=t.tipo_tramite.nombre,
             categoria=t.tipo_tramite.categoria,
             numero_expediente=t.numero_expediente,
+            nombre_producto=t.nombre_producto,
             fecha_vencimiento=t.fecha_vencimiento,
             estado=t.estado,
             creado_por_nombre=t.creado_por.nombre if t.creado_por else None,
@@ -562,6 +565,7 @@ def proximos_a_vencer(
             tramite_nombre=t.tipo_tramite.nombre,
             categoria=t.tipo_tramite.categoria,
             numero_expediente=t.numero_expediente,
+            nombre_producto=t.nombre_producto,
             fecha_vencimiento=t.fecha_vencimiento,
             estado=t.estado,
             estatus_calculado=calcular_estatus(t),
@@ -639,6 +643,7 @@ def editar_tramite(
         "fecha_paso_firma", "fecha_salida_mensajeria", "fecha_ingreso", "resolucion_final", "fecha_aprobacion",
         "fecha_ingreso_instrumento", "fecha_resolucion_aprobatoria", "fecha_presentacion_solicitud", "fecha_retiro_licencia",
         "anticipo", "complemento", "fecha_emision_licencia", "anios_licencia",
+        "nombre_producto", "numero_registro",
     }
     cambios_dict = cambios.model_dump(exclude_unset=True)
 

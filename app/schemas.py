@@ -47,6 +47,8 @@ class TramiteBase(BaseModel):
     complemento: Optional[str] = None
     fecha_emision_licencia: Optional[date] = None
     anios_licencia: Optional[int] = None
+    nombre_producto: Optional[str] = None
+    numero_registro: Optional[str] = None
 
 
 class TramiteCreate(TramiteBase):
@@ -122,6 +124,7 @@ class TramiteDashboardOut(BaseModel):
     tramite_nombre: str
     categoria: str
     numero_expediente: Optional[str] = None
+    nombre_producto: Optional[str] = None
     fecha_vencimiento: Optional[date] = None
     estado: str
     creado_por_nombre: Optional[str] = None
@@ -207,6 +210,8 @@ class TramiteUpdate(BaseModel):
     complemento: Optional[str] = None
     fecha_emision_licencia: Optional[date] = None
     anios_licencia: Optional[int] = None
+    nombre_producto: Optional[str] = None
+    numero_registro: Optional[str] = None
 
 
 class TramiteEmpresaOut(BaseModel):
@@ -234,6 +239,8 @@ class TramiteEmpresaOut(BaseModel):
     complemento: Optional[str] = None
     fecha_emision_licencia: Optional[date] = None
     anios_licencia: Optional[int] = None
+    nombre_producto: Optional[str] = None
+    numero_registro: Optional[str] = None
     documentos: List[DocumentoOut] = []
     reparos: List[ReparoOut] = []
     estatus_calculado: Optional[str] = None
