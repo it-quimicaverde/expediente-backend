@@ -6,11 +6,14 @@ from uuid import UUID
 
 from dateutil import parser as date_parser
 from dateutil.relativedelta import relativedelta
-from fastapi import FastAPI, Depends, HTTPException, UploadFile, File
+from fastapi import FastAPI, Depends, HTTPException, UploadFile, File, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import asc
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
+from slowapi.middleware import SlowAPIMiddleware
 
 from . import models, schemas, auth, storage
 from .database import engine, get_db, Base
@@ -29,6 +32,20 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+def obtener_ip_real(request: Request) -> str:
+    """Render/Cloudflare pasan la IP real del visitante en X-Forwarded-For."""
+    reenviada = request.headers.get("x-forwarded-for")
+    if reenviada:
+        return reenviada.split(",")[0].strip()
+    return request.client.host if request.client else "desconocido"
+
+
+limiter = Limiter(key_func=obtener_ip_real, default_limits=["100/minute"])
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+app.add_middleware(SlowAPIMiddleware)
 
 
 def empresas_asignadas_ids(db: Session, usuario_id) -> list:
@@ -178,7 +195,8 @@ def enviar_alertas_manual(current_user: models.Usuario = Depends(auth.require_ad
 
 # ---------- Autenticación ----------
 @app.post("/auth/login", response_model=schemas.Token)
-def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
+@limiter.limit("10/minute")
+def login(request: Request, form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
     user = auth.authenticate_user(db, form_data.username, form_data.password)
     if not user:
         raise HTTPException(status_code=401, detail="Correo o contraseña incorrectos")
